@@ -6,7 +6,8 @@ const path = require('path');
 class AutoMod {
     constructor(client) {
         this.client = client;
-        this.db = new sqlite3.Database(path.join(__dirname, '../../data/automod.db'));
+        // Ana veritabanı modülünden AutoMod veritabanına erişim sağla
+        this.db = this.client.database.getAutoModDb();
         this.setupDatabase();
         this.spamCache = new Map();
         this.raidCache = new Map();
@@ -60,46 +61,43 @@ class AutoMod {
         });
     }
 
-    async getGuildSettings(guildId) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT * FROM guild_automod_settings WHERE guild_id = ?', [guildId], (err, row) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
+    // AutoMod.js içindeki getGuildSettings metodunu şu şekilde güncelleyin
+async getGuildSettings(guildId) {
+    return new Promise((resolve, reject) => {
+        try {
+            // better-sqlite3 API'si ile doğrudan çalıştırma
+            let row = this.db.prepare('SELECT * FROM guild_automod_settings WHERE guild_id = ?').get(guildId);
+            
+            if (!row) {
+                // Varsayılan ayarları ekle
+                const defaultSettings = {
+                    guild_id: guildId,
+                    spam_protection: 0,
+                    spam_threshold: 5,
+                    spam_interval: 5000,
+                    raid_protection: 0,
+                    raid_threshold: 10,
+                    raid_interval: 10000,
+                    profanity_filter: 0
+                };
                 
-                if (!row) {
-                    // Varsayılan ayarları ekle
-                    const defaultSettings = {
-                        guild_id: guildId,
-                        spam_protection: 0,
-                        spam_threshold: 5,
-                        spam_interval: 5000,
-                        raid_protection: 0,
-                        raid_threshold: 10,
-                        raid_interval: 10000,
-                        profanity_filter: 0
-                    };
-                    
-                    this.db.run(
-                        `INSERT INTO guild_automod_settings 
-                        (guild_id, spam_protection, spam_threshold, spam_interval, raid_protection, raid_threshold, raid_interval, profanity_filter) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [guildId, 0, 5, 5000, 0, 10, 10000, 0],
-                        function(err) {
-                            if (err) {
-                                reject(err);
-                                return;
-                            }
-                            resolve(defaultSettings);
-                        }
-                    );
-                } else {
-                    resolve(row);
-                }
-            });
-        });
-    }
+                this.db.prepare(
+                    `INSERT INTO guild_automod_settings 
+                    (guild_id, spam_protection, spam_threshold, spam_interval, raid_protection, raid_threshold, raid_interval, profanity_filter) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                ).run(
+                    guildId, 0, 5, 5000, 0, 10, 10000, 0
+                );
+                
+                resolve(defaultSettings);
+            } else {
+                resolve(row);
+            }
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
 
     async updateGuildSettings(guildId, settings) {
         return new Promise((resolve, reject) => {

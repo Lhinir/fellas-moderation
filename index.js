@@ -104,3 +104,12 @@ client.on(Events.GuildMemberAdd, async (member) => {
 process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
+
+// Uygulama kapatılırken veritabanı bağlantılarını kapat
+process.on('SIGINT', () => {
+    console.log('Uygulama kapatılıyor...');
+    if (client.database) {
+        client.database.close();
+    }
+    process.exit(0);
+});
