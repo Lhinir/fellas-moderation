@@ -1,87 +1,106 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const fs = require('fs');
+// index.js
+const { Client, Collection, GatewayIntentBits, Partials, Events } = require('discord.js');
+const { readdirSync } = require('fs');
 const path = require('path');
-const dotenv = require('dotenv');
-const DiscordLogger = require('logger');
+require('dotenv').config();
 
+// Modülleri içe aktar
+const Database = require('./src/modules/database.js');
+const Logger = require('./src/modules/logger.js');
+const AutoMod = require('./src/modules/automod.js');
 
-
-// Ortam değişkenlerini yükle
-dotenv.config();
-
-// Bot client'ını oluştur
+// Client oluştur
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildModeration,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages
+    ],
+    partials: [
+        Partials.Channel,
+        Partials.Message,
+        Partials.GuildMember,
+        Partials.User
     ]
 });
 
-// Komutları ve event'leri yönetmek için Collection oluştur
+// Client koleksiyonları
 client.commands = new Collection();
-client.events = new Collection();
+client.buttons = new Collection();
+client.selectMenus = new Collection();
 
-// Komutları yükleme fonksiyonu
-function loadCommands(commandsPath) {
-    console.log('🤖 Komutlar yükleniyor...');
-    const commandFolders = fs.readdirSync(commandsPath);
-    
-    for (const folder of commandFolders) {
-        const commandFiles = fs.readdirSync(path.join(commandsPath, folder))
-            .filter(file => file.endsWith('.js'));
-        
-        console.log(`📂 ${folder} klasöründen komutlar yükleniyor:`);
-        
-        for (const file of commandFiles) {
-            const commandPath = path.join(commandsPath, folder, file);
-            const command = require(commandPath);
-            
-            if ('data' in command && 'execute' in command) {
-                client.commands.set(command.data.name, command);
-                console.log(`   ✅ ${command.data.name} komutu yüklendi`);
-            }
-        }
-    }
-    
-    console.log(`✨ Toplam ${client.commands.size} komut yüklendi.`);
-}
+// Modülleri client'a ekle
+client.database = new Database();
+client.logger = new Logger(client);
+client.automod = new AutoMod(client);
 
-// Event'leri yükleme fonksiyonu
-function loadEvents(eventsPath) {
-    console.log('🎉 Event\'ler yükleniyor...');
-    const eventFiles = fs.readdirSync(eventsPath)
+// Komutları yükle
+const commandFolders = readdirSync(path.join(__dirname, 'src/commands'));
+
+for (const folder of commandFolders) {
+    const commandFiles = readdirSync(path.join(__dirname, `src/commands/${folder}`))
         .filter(file => file.endsWith('.js'));
     
-    for (const file of eventFiles) {
-        const eventPath = path.join(eventsPath, file);
-        const event = require(eventPath);
-        
-        if (event.once) {
-            client.once(event.name, (...args) => event.execute(...args));
-            console.log(`   🔔 Tek seferlik ${event.name} event'i yüklendi`);
-        } else {
-            client.on(event.name, (...args) => event.execute(...args));
-            console.log(`   🔔 Sürekli ${event.name} event'i yüklendi`);
-        }
+    for (const file of commandFiles) {
+        const command = require(`./src/commands/${folder}/${file}`);
+        client.commands.set(command.data.name, command);
+        console.log(`Komut yüklendi: ${command.data.name}`);
     }
-    
-    console.log(`✨ Toplam ${eventFiles.length} event yüklendi.`);
 }
 
-// Komut ve event'leri yükle
-loadCommands(path.join(__dirname, 'src', 'commands'));
-loadEvents(path.join(__dirname, 'src', 'events'));
+// Eventları yükle
+const eventFiles = readdirSync(path.join(__dirname, 'src/events'))
+    .filter(file => file.endsWith('.js'));
 
-client.on('ready', () => {
-    // Log kanalının ID'sini buraya girin
-    const logger = new DiscordLogger(client, '936756672377012235');
+for (const file of eventFiles) {
+    const event = require(`./src/events/${file}`);
+    if (event.once) {
+        client.once(event.name, (...args) => event.execute(...args, client));
+    } else {
+        client.on(event.name, (...args) => event.execute(...args, client));
+    }
+    console.log(`Event yüklendi: ${event.name}`);
+}
+
+// AutoMod Olayları
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+    
+    try {
+        // Küfür kontrolü
+        const hasProfanity = await client.automod.handleProfanityDetection(message);
+        if (hasProfanity) {
+            await client.automod.punishProfanity(message);
+            return;
+        }
+        
+        // Spam kontrolü
+        const isSpam = await client.automod.handleSpamDetection(message);
+        if (isSpam) {
+            await client.automod.punishSpam(message);
+            return;
+        }
+    } catch (error) {
+        console.error('AutoMod MessageCreate olayında hata:', error);
+    }
 });
 
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => console.log('Bot başarıyla giriş yaptı!'))
-    .catch(error => {
-        console.error('Bot giriş hatası:', error);
-        console.log('Token:', process.env.DISCORD_TOKEN);
-    });
+client.on(Events.GuildMemberAdd, async (member) => {
+    try {
+        // Raid kontrolü
+        const isRaid = await client.automod.handleRaidDetection(member);
+        if (isRaid) {
+            await client.automod.punishRaid(member.guild);
+        }
+    } catch (error) {
+        console.error('AutoMod GuildMemberAdd olayında hata:', error);
+    }
+});
+
+// Hata yönetimi
+process.on('unhandledRejection', error => {
+    console.error('Unhandled promise rejection:', error);
+});
