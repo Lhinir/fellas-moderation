@@ -16,53 +16,55 @@ class AutoMod {
     }
 
     setupDatabase() {
-        this.db.serialize(() => {
-            // Küfür listesi tablosu
-            this.db.run(`CREATE TABLE IF NOT EXISTS profanity_words (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                word TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`);
-            
-            // Sunucu ayarları tablosu
-            this.db.run(`CREATE TABLE IF NOT EXISTS guild_automod_settings (
-                guild_id TEXT PRIMARY KEY,
-                spam_protection BOOLEAN DEFAULT 0,
-                spam_threshold INTEGER DEFAULT 5,
-                spam_interval INTEGER DEFAULT 5000,
-                raid_protection BOOLEAN DEFAULT 0,
-                raid_threshold INTEGER DEFAULT 10,
-                raid_interval INTEGER DEFAULT 10000,
-                profanity_filter BOOLEAN DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`);
-            
-            // Varsayılan küfür listesini ekle
-            const defaultProfanity = [
-                'amk', 'aq', 'oç', 'piç', 'sik', 'yarrak', 'amcık', 'göt', 
-                'mal', 'salak', 'bok', 'gerizekalı', 'aptal'
-            ];
-            
-            const stmt = this.db.prepare('INSERT OR IGNORE INTO profanity_words (word) VALUES (?)');
-            defaultProfanity.forEach(word => {
-                stmt.run(word);
-            });
-            stmt.finalize();
+        // Küfür listesi tablosu
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS profanity_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).run();
+        
+        // Sunucu ayarları tablosu
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS guild_automod_settings (
+            guild_id TEXT PRIMARY KEY,
+            spam_protection BOOLEAN DEFAULT 0,
+            spam_threshold INTEGER DEFAULT 5,
+            spam_interval INTEGER DEFAULT 5000,
+            raid_protection BOOLEAN DEFAULT 0,
+            raid_threshold INTEGER DEFAULT 10,
+            raid_interval INTEGER DEFAULT 10000,
+            profanity_filter BOOLEAN DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).run();
+        
+        // Varsayılan küfür listesini ekle
+        const defaultProfanity = [
+            'amk', 'aq', 'oç', 'piç', 'sik', 'yarrak', 'amcık', 'göt', 
+            'mal', 'salak', 'bok', 'gerizekalı', 'aptal'
+        ];
+        
+        // Tek tek kelime eklemek için prepare
+        const insert = this.db.prepare('INSERT OR IGNORE INTO profanity_words (word) VALUES (?)');
+        
+        // Transaction içinde toplu işlem yaparak performansı artır
+        const insertMany = this.db.transaction((words) => {
+            for (const word of words) {
+                insert.run(word);
+            }
         });
+        
+        insertMany(defaultProfanity);
     }
 
     loadProfanityList() {
-        this.db.all('SELECT word FROM profanity_words', (err, rows) => {
-            if (err) {
-                console.error('Küfür listesi yüklenirken hata:', err);
-                return;
-            }
+        try {
+            const rows = this.db.prepare('SELECT word FROM profanity_words').all();
             this.profanityList = rows.map(row => row.word.toLowerCase());
-        });
+        } catch (err) {
+            console.error('Küfür listesi yüklenirken hata:', err);
+        }
     }
-
     // AutoMod.js içindeki getGuildSettings metodunu şu şekilde güncelleyin
-async getGuildSettings(guildId) {
+async getGuildConfig(guildId) {
     return new Promise((resolve, reject) => {
         try {
             // better-sqlite3 API'si ile doğrudan çalıştırma
@@ -99,7 +101,7 @@ async getGuildSettings(guildId) {
     });
 }
 
-    async updateGuildSettings(guildId, settings) {
+    async updateGuildConfig(guildId, settings) {
         return new Promise((resolve, reject) => {
             const stmt = this.db.prepare(
                 `UPDATE guild_automod_settings SET 
@@ -171,7 +173,7 @@ async getGuildSettings(guildId) {
     handleSpamDetection(message) {
         if (!message.guild || message.author.bot) return false;
         
-        return this.getGuildSettings(message.guild.id)
+        return this.getGuildConfig(message.guild.id)
             .then(settings => {
                 if (!settings.spam_protection) return false;
                 
@@ -221,7 +223,7 @@ async getGuildSettings(guildId) {
     handleRaidDetection(member) {
         if (!member.guild) return false;
         
-        return this.getGuildSettings(member.guild.id)
+        return this.getGuildConfig(member.guild.id)
             .then(settings => {
                 if (!settings.raid_protection) return false;
                 
@@ -267,7 +269,7 @@ async getGuildSettings(guildId) {
         if (!message.guild || message.author.bot) return false;
         
         try {
-            const settings = await this.getGuildSettings(message.guild.id);
+            const settings = await this.getGuildConfig(message.guild.id);
             if (!settings.profanity_filter) return false;
             
             // Küfür listesi henüz yüklenmemişse yükle

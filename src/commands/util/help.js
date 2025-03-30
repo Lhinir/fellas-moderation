@@ -10,7 +10,8 @@ module.exports = {
                 .setDescription('Belirli bir komut hakkında bilgi almak için')
                 .setRequired(false)),
 
-    async execute(interaction, client) {
+    async execute(interaction) {
+        const client = interaction.client;
         const commandName = interaction.options.getString('command');
         
         if (commandName) {
@@ -20,7 +21,7 @@ module.exports = {
             if (!command) {
                 return interaction.reply({ 
                     content: `❌ \`${commandName}\` adında bir komut bulunamadı.`,
-                    ephemeral: true 
+                    ephemeral: true // flags yerine ephemeral kullanın
                 });
             }
             
@@ -43,7 +44,10 @@ module.exports = {
                 embed.addFields({ name: '📑 Alt Komutlar', value: subcommandsText });
             }
                 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ 
+                embeds: [embed], 
+                ephemeral: true // flags yerine ephemeral kullanın
+            });
         }
         
         // Tüm komutları kategorilere göre listele
@@ -51,8 +55,26 @@ module.exports = {
         
         client.commands.forEach(cmd => {
             // Komut dosya yolundan kategori adını çıkar
-            const category = cmd.data.name === 'help' ? 'Genel' : 
-                             cmd.data.name === 'automod' || cmd.data.name === 'logs' ? 'Moderasyon' : 'Diğer';
+            let category;
+            try {
+                // Komut dosya yolunu bulmaya çalış
+                const commandPath = require.cache[require.resolve(`../../commands/${cmd.data.name}.js`)]?.filename;
+                if (commandPath) {
+                    const pathParts = commandPath.split(/[\\/]/);
+                    category = pathParts[pathParts.indexOf('commands') + 1];
+                    // İlk harfi büyük yap
+                    category = category.charAt(0).toUpperCase() + category.slice(1);
+                }
+            } catch (error) {
+                // Dosya yolu bulunamazsa varsayılan kategori kullan
+                category = null;
+            }
+            
+            // Eğer kategori bulunamadıysa, komut isimlerine göre tahmin et
+            if (!category) {
+                category = cmd.data.name === 'help' ? 'Genel' : 
+                          ['automod', 'ban', 'kick', 'warn', 'mute', 'logs'].includes(cmd.data.name) ? 'Moderasyon' : 'Diğer';
+            }
             
             if (!categories[category]) {
                 categories[category] = [];
@@ -79,11 +101,20 @@ module.exports = {
                 case 'Genel':
                     icon = '🔧';
                     break;
+                case 'Util':
+                    icon = '🛠️';
+                    break;
+                case 'Admin':
+                    icon = '⚙️';
+                    break;
             }
             
             embed.addFields({ name: `${icon} ${category}`, value: commands.join('\n') });
         }
             
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({ 
+            embeds: [embed], 
+            ephemeral: true // flags yerine ephemeral kullanın
+        });
     }
 };

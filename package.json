@@ -1,19 +1,18 @@
 {
-  "name": "discord-moderation-bot",
+  "name": "fellas-mod-old",
   "version": "1.0.0",
-  "description": "Discord moderasyon botu",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "author": "acer",
+  "license": "ISC",
+  "description": "",
   "dependencies": {
     "better-sqlite3": "^11.9.1",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
+    "fs": "^0.0.1-security",
     "sqlite3": "^5.1.7"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
   }
 }

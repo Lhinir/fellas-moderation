@@ -181,7 +181,22 @@ class DiscordLogger {
             changedAt: new Date().toISOString()
         });
     }
-
+// logger.js içinde:
+async log(guildId, type, data) {
+    try {
+        // Karmaşık objeyi JSON'a dönüştür
+        const jsonData = JSON.stringify(data);
+        
+        await this.db.run(
+            'INSERT INTO logs (guild_id, type, data, timestamp) VALUES (?, ?, ?, ?)',
+            [guildId, type, jsonData, Date.now()]
+        );
+        
+        // Log kanalına mesaj gönderme...
+    } catch (error) {
+        console.error('Log kaydı sırasında hata:', error);
+    }
+}
     writeToLogFile(logType, data) {
         const logDir = path.join(__dirname, 'logs');
         

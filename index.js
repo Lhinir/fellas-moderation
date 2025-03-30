@@ -113,3 +113,5 @@ process.on('SIGINT', () => {
     }
     process.exit(0);
 });
+
+client.login(process.env.TOKEN);
