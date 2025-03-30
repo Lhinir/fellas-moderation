@@ -127,6 +127,7 @@ client.on('guildCreate', async (guild) => {
 });
 
 // Slash komut işleyici
+/*
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
@@ -139,11 +140,27 @@ client.on('interactionCreate', async (interaction) => {
         try {
             await command.execute(interaction);
         } catch (error) {
-            console.error(`Komut çalıştırma hatası: ${error}`);
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: 'Komut çalıştırılırken bir hata oluştu!', ephemeral: true });
-            } else {
-                await interaction.reply({ content: 'Komut çalıştırılırken bir hata oluştu!', ephemeral: true });
+            console.error(`Komut çalıştırma hatası:`, error);
+            
+            // Eğer zaten yanıtlanmamışsa yanıtla
+            if (!interaction.replied && !interaction.deferred) {
+                try {
+                    await interaction.reply({ 
+                        content: 'Komut çalıştırılırken bir hata oluştu!', 
+                        ephemeral: true 
+                    });
+                } catch (replyError) {
+                    console.error('Hata mesajı gönderirken hata:', replyError);
+                }
+            } else if (interaction.deferred && !interaction.replied) {
+                // Eğer ertelenmiş ama yanıtlanmamışsa
+                try {
+                    await interaction.editReply({ 
+                        content: 'Komut çalıştırılırken bir hata oluştu!' 
+                    });
+                } catch (editError) {
+                    console.error('Hata mesajı düzenlerken hata:', editError);
+                }
             }
         }
     } else if (interaction.isButton()) {
@@ -154,11 +171,22 @@ client.on('interactionCreate', async (interaction) => {
         try {
             await button.execute(interaction);
         } catch (error) {
-            console.error(`Buton işleme hatası: ${error}`);
-            await interaction.reply({ content: 'Buton işlenirken bir hata oluştu!', ephemeral: true });
+            console.error(`Buton işleme hatası:`, error);
+            
+            if (!interaction.replied && !interaction.deferred) {
+                try {
+                    await interaction.reply({ 
+                        content: 'Buton işlenirken bir hata oluştu!', 
+                        ephemeral: true 
+                    });
+                } catch (replyError) {
+                    console.error('Buton hata mesajı gönderirken hata:', replyError);
+                }
+            }
         }
     }
 });
+*/
 
 // Botu başlat
 startBot();

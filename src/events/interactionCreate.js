@@ -1,113 +1,81 @@
 // src/events/interactionCreate.js
-const { Events, InteractionResponseFlags, InteractionType } = require('discord.js');
+// Bu dosyanın SADECE BİR tane olduğundan emin olun
 
 module.exports = {
-    name: Events.InteractionCreate,
+    name: 'interactionCreate',
+    once: false,
     async execute(interaction) {
-        const client = interaction.client;
+        // Saniye cinsinden başlangıç zamanını kaydet (hata ayıklama için)
+        const startTime = Date.now();
         
-        try {
-            // Slash komutlarını işle
-            if (interaction.isChatInputCommand()) {
-                const command = client.commands.get(interaction.commandName);
+        console.log(`[${new Date().toISOString()}] Etkileşim başladı: ${interaction.commandName || interaction.customId || 'Bilinmeyen'}`);
+        
+        // Komutları işle
+        if (interaction.isChatInputCommand()) {
+            try {
+                const command = interaction.client.commands.get(interaction.commandName);
                 
                 if (!command) {
-                    console.error(`Komut bulunamadı: ${interaction.commandName}`);
-                    return interaction.reply({
-                        content: 'Bu komut artık kullanılamıyor veya bulunamadı.',
-                        ephemeral: true // flags yerine ephemeral kullanın
-                    });
+                    console.log(`${interaction.commandName} komutu bulunamadı.`);
+                    return;
                 }
                 
+                // ÖNEMLİ: Her zaman önce deferReply yap
+                await interaction.deferReply({ ephemeral: true }).catch(err => {
+                    console.log(`${interaction.commandName} için defer hatası:`, err.message);
+                });
+                
+                console.log(`[${new Date().toISOString()}] Defer edildi, komutu çalıştırıyorum: ${interaction.commandName}`);
+                
+                // Komutu deferReply'dan SONRA çalıştır
                 await command.execute(interaction);
-                return;
-            }
-            
-            // Buton etkileşimlerini işle
-            if (interaction.isButton()) {
-                const buttonId = interaction.customId;
-                const button = client.buttons.get(buttonId) || 
-                               client.buttons.find(btn => buttonId.startsWith(btn.customId));
                 
-                if (!button) {
-                    return interaction.reply({
-                        content: 'Bu buton artık kullanılamıyor veya bulunamadı.',
-                        ephemeral: true // flags yerine ephemeral kullanın
-                    });
+                console.log(`[${new Date().toISOString()}] Komut tamamlandı: ${interaction.commandName}, süre: ${(Date.now() - startTime) / 1000}s`);
+            } catch (error) {
+                console.error(`Komut çalıştırma hatası (${interaction.commandName}):`, error);
+                
+                try {
+                    if (interaction.deferred && !interaction.replied) {
+                        await interaction.editReply({
+                            content: 'Komut çalıştırılırken bir hata oluştu!'
+                        }).catch(err => {
+                            console.error('Edit Reply hatası:', err);
+                        });
+                    } else if (!interaction.replied) {
+                        await interaction.reply({
+                            content: 'Komut çalıştırılırken bir hata oluştu!',
+                            ephemeral: true
+                        }).catch(err => {
+                            console.error('Reply hatası:', err);
+                        });
+                    }
+                } catch (replyError) {
+                    console.error('Hata mesajı yanıtlama hatası:', replyError);
                 }
+            }
+        }
+        
+        // Butonları işle
+        else if (interaction.isButton()) {
+            try {
+                const button = interaction.client.buttons.get(interaction.customId);
+                
+                if (!button) return;
                 
                 await button.execute(interaction);
-                return;
-            }
-            
-            // Select menu etkileşimlerini işle
-            if (interaction.isSelectMenu()) {
-                const menuId = interaction.customId;
-                const menu = client.selectMenus.get(menuId) || 
-                             client.selectMenus.find(m => menuId.startsWith(m.customId));
+            } catch (error) {
+                console.error(`Buton işleme hatası (${interaction.customId}):`, error);
                 
-                if (!menu) {
-                    return interaction.reply({
-                        content: 'Bu menü artık kullanılamıyor veya bulunamadı.',
-                        ephemeral: true // flags yerine ephemeral kullanın
-                    });
-                }
-                
-                await menu.execute(interaction);
-                return;
-            }
-            
-            // Modal etkileşimlerini işle
-            if (interaction.isModalSubmit()) {
-                const modalId = interaction.customId;
-                const modal = client.modals?.get(modalId) || 
-                              client.modals?.find(m => modalId.startsWith(m.customId));
-                
-                if (modal) {
-                    await modal.execute(interaction);
-                }
-                return;
-            }
-        } catch (error) {
-            console.error('Komut çalıştırma hatası:', error);
-            console.error('Hata kaynağı:', error.stack);
-            
-            // Hata mesajını gönder
-            try {
-                const errorMessage = 'Komut çalıştırılırken bir hata oluştu! Lütfen daha sonra tekrar deneyin.';
-                
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ 
-                        content: errorMessage, 
-                        ephemeral: true 
-                    });
-                } else {
-                    await interaction.reply({ 
-                        content: errorMessage, 
-                        ephemeral: true // flags yerine ephemeral kullanın
-                    });
-                }
-                
-                // Geliştiriciye veya log kanalına hata mesajını ilet
                 try {
-                    await client.logger.log(interaction.guild?.id, 'error', {
-                        error: error.message,
-                        command: interaction.isCommand() ? interaction.commandName : 'unknown',
-                        user: {
-                            id: interaction.user.id,
-                            tag: interaction.user.tag
-                        },
-                        guild: interaction.guild ? {
-                            id: interaction.guild.id,
-                            name: interaction.guild.name
-                        } : null,
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (logError) {
-                    console.error('Hata log kaydı sırasında hata:', logError);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: 'Buton işlenirken bir hata oluştu!',
+                            ephemeral: true
+                        }).catch(console.error);
+                    }
+                } catch (replyError) {
+                    console.error('Buton hata mesajı gönderme hatası:', replyError);
                 }
-            } catch (replyError) {
-                console.error('Hata mesajı gönderirken hata:', replyError);
             }
         }
     }

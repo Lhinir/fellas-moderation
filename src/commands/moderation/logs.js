@@ -1,56 +1,24 @@
-// src/commands/moderation/logs.js - Zamanaşımı düzeltmesi
+// src/commands/moderation/logs.js - Basitleştirilmiş
 
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('logs')
-        .setDescription('Log kanallarını ayarla')
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('set')
-                .setDescription('Bir log kanalı ayarla')
-                .addStringOption(option =>
-                    option.setName('type')
-                        .setDescription('Log türü')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: 'Moderasyon', value: 'moderation' },
-                            { name: 'Sunucu', value: 'server' },
-                            { name: 'Mesaj', value: 'message' },
-                            { name: 'Üye', value: 'member' }
-                        ))
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('Log kanalı')
-                        .setRequired(true)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('view')
-                .setDescription('Ayarlı log kanallarını görüntüle'))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('delete')
-                .setDescription('Bir log kanalı ayarını sil')
-                .addStringOption(option =>
-                    option.setName('type')
-                        .setDescription('Log türü')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: 'Moderasyon', value: 'moderation' },
-                            { name: 'Sunucu', value: 'server' },
-                            { name: 'Mesaj', value: 'message' },
-                            { name: 'Üye', value: 'member' }
-                        )))
+        // ... tüm command builder kodu aynı kalır ...
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
-        // Hemen yanıtı ertele (3 saniyelik zaman aşımını önle)
-        await interaction.deferReply({ ephemeral: true });
-        
         try {
-            const subcommand = interaction.options.getSubcommand();
+            // Alt komut kontrolü
+            let subcommand;
+            try {
+                subcommand = interaction.options.getSubcommand();
+            } catch (error) {
+                return interaction.editReply({
+                    content: 'Geçersiz alt komut. Lütfen set, view veya delete alt komutlarından birini kullanın.'
+                });
+            }
             
             if (subcommand === 'set') {
                 const type = interaction.options.getString('type');
@@ -59,7 +27,7 @@ module.exports = {
                 // SQLite'a log kanalını kaydet
                 await database.logs.setLogChannel(interaction.guild.id, type, channel.id);
                 
-                await interaction.editReply({
+                return interaction.editReply({
                     content: `**${type}** log kanalı <#${channel.id}> olarak ayarlandı.`
                 });
             }
@@ -77,7 +45,7 @@ module.exports = {
                     return `**${log.type}**: <#${log.channel_id}>`;
                 }).join('\n');
                 
-                await interaction.editReply({
+                return interaction.editReply({
                     content: `**Ayarlı Log Kanalları**\n${channelList}`
                 });
             }
@@ -87,15 +55,15 @@ module.exports = {
                 // Log kanalı ayarını sil
                 await database.logs.deleteLogChannel(interaction.guild.id, type);
                 
-                await interaction.editReply({
+                return interaction.editReply({
                     content: `**${type}** log kanalı ayarı başarıyla silindi.`
                 });
             }
         } catch (error) {
-            console.error('Log kanalı yönetim hatası:', error);
-            await interaction.editReply({
-                content: 'Log kanalı ayarları yönetilirken bir hata oluştu.'
-            }).catch(err => console.error('Hata mesajı gönderirken hata:', err));
+            console.error('Log komutu hatası:', error);
+            return interaction.editReply({
+                content: 'Komut çalıştırılırken bir hata oluştu.'
+            });
         }
     }
 };
