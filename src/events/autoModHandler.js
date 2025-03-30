@@ -327,11 +327,16 @@ async function logMessageDeletion(guild, user, channel, reason, word) {
         const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
         if (!logChannel) return;
         
+        // Açıklama metni - boş olmamalı
+        const description = reason === 'banned_word' 
+            ? `${user.tag} kullanıcısının mesajı yasaklı kelime içerdiği için silindi.`
+            : `${user.tag} kullanıcısının mesajı spam nedeniyle silindi.`;
+        
         // Log embedini oluştur
         const logEmbed = new EmbedBuilder()
             .setColor('#FFA500') // Turuncu - mesaj silme için
             .setTitle('🗑️ AutoMod: Mesaj Silindi')
-            .setDescription(`<@${user.id}> kullanıcısının mesajı **${reason === 'banned_word' ? 'yasaklı kelime' : 'spam'}** nedeniyle silindi.`)
+            .setDescription(description) // Her zaman geçerli bir açıklama
             .addFields(
                 { name: 'Kullanıcı', value: `${user.tag} (${user.id})`, inline: true },
                 { name: 'Kanal', value: `<#${channel.id}>`, inline: true }
@@ -353,6 +358,7 @@ async function logMessageDeletion(guild, user, channel, reason, word) {
 }
 
 // Spam susturma için ayrı log gönder
+// Spam susturma için ayrı log gönder
 async function logSpamAction(guild, user, duration, spamCount, channel, deletedCount) {
     try {
         // Log kanalı ID'sini al (moderasyon logu için)
@@ -373,7 +379,7 @@ async function logSpamAction(guild, user, duration, spamCount, channel, deletedC
         const logEmbed = new EmbedBuilder()
             .setColor('#FF0000') // Kırmızı - spam susturma için
             .setTitle('🔇 AutoMod: Spam Susturma')
-            .setDescription(`<@${user.id}> kullanıcısı **spam** yaptığı için otomatik olarak susturuldu.`)
+            .setDescription(`${user.tag} kullanıcısı spam yaptığı için ${duration / 60000} dakika süreyle susturuldu.`) // Açıklama ekle
             .addFields(
                 { name: 'Kullanıcı', value: `${user.tag} (${user.id})`, inline: true },
                 { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
