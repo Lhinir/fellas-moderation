@@ -5,18 +5,55 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        // ... tüm command builder kodu aynı kalır ...
+        .setName('logs')
+        .setDescription('Log kanallarını ayarla')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('set')
+                .setDescription('Bir log kanalı ayarla')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Log türü')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Moderasyon', value: 'moderation' },
+                            { name: 'Sunucu', value: 'server' },
+                            { name: 'Mesaj', value: 'message' },
+                            { name: 'Üye', value: 'member' }
+                        ))
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('Log kanalı')
+                        .setRequired(true)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('view')
+                .setDescription('Ayarlı log kanallarını görüntüle'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('delete')
+                .setDescription('Bir log kanalı ayarını sil')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Log türü')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Moderasyon', value: 'moderation' },
+                            { name: 'Sunucu', value: 'server' },
+                            { name: 'Mesaj', value: 'message' },
+                            { name: 'Üye', value: 'member' }
+                        )))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
         try {
             // Alt komut kontrolü
-            let subcommand;
-            try {
-                subcommand = interaction.options.getSubcommand();
-            } catch (error) {
-                return interaction.editReply({
-                    content: 'Geçersiz alt komut. Lütfen set, view veya delete alt komutlarından birini kullanın.'
+            const subcommand = interaction.options.getSubcommand(false);
+            
+            if (!subcommand) {
+                return interaction.reply({
+                    content: 'Geçersiz alt komut. Lütfen set, view veya delete alt komutlarından birini kullanın.',
+                    ephemeral: true
                 });
             }
             
@@ -24,11 +61,12 @@ module.exports = {
                 const type = interaction.options.getString('type');
                 const channel = interaction.options.getChannel('channel');
                 
-                // SQLite'a log kanalını kaydet
+                // Veritabanı işlemi - Başarıya kadar işlem yapmıyoruz
                 await database.logs.setLogChannel(interaction.guild.id, type, channel.id);
                 
-                return interaction.editReply({
-                    content: `**${type}** log kanalı <#${channel.id}> olarak ayarlandı.`
+                return interaction.reply({
+                    content: `**${type}** log kanalı <#${channel.id}> olarak ayarlandı.`,
+                    ephemeral: true
                 });
             }
             else if (subcommand === 'view') {
@@ -36,8 +74,9 @@ module.exports = {
                 const logChannels = await database.logs.getAllLogChannels(interaction.guild.id);
                 
                 if (!logChannels || logChannels.length === 0) {
-                    return interaction.editReply({
-                        content: 'Bu sunucuda hiç log kanalı ayarlanmamış.'
+                    return interaction.reply({
+                        content: 'Bu sunucuda hiç log kanalı ayarlanmamış.',
+                        ephemeral: true
                     });
                 }
                 
@@ -45,8 +84,9 @@ module.exports = {
                     return `**${log.type}**: <#${log.channel_id}>`;
                 }).join('\n');
                 
-                return interaction.editReply({
-                    content: `**Ayarlı Log Kanalları**\n${channelList}`
+                return interaction.reply({
+                    content: `**Ayarlı Log Kanalları**\n${channelList}`,
+                    ephemeral: true
                 });
             }
             else if (subcommand === 'delete') {
@@ -55,15 +95,20 @@ module.exports = {
                 // Log kanalı ayarını sil
                 await database.logs.deleteLogChannel(interaction.guild.id, type);
                 
-                return interaction.editReply({
-                    content: `**${type}** log kanalı ayarı başarıyla silindi.`
+                return interaction.reply({
+                    content: `**${type}** log kanalı ayarı başarıyla silindi.`,
+                    ephemeral: true
                 });
             }
         } catch (error) {
             console.error('Log komutu hatası:', error);
-            return interaction.editReply({
-                content: 'Komut çalıştırılırken bir hata oluştu.'
-            });
+            
+            if (!interaction.replied) {
+                return interaction.reply({
+                    content: 'Komut çalıştırılırken bir hata oluştu.',
+                    ephemeral: true
+                }).catch(console.error);
+            }
         }
     }
 };
