@@ -1,440 +1,313 @@
-// src/commands/moderation/automod.js
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+// src/commands/moderation/automod.js - SlashCommandBuilder'a yeni alt komut ekle
+
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('automod')
-        .setDescription('Otomatik moderasyon ayarlarını yönetir')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .setDescription('AutoMod ayarlarını yapılandırır')
         .addSubcommand(subcommand =>
             subcommand
-                .setName('settings')
-                .setDescription('Mevcut automod ayarlarını gösterir'))
+                .setName('status')
+                .setDescription('AutoMod durumunu görüntüler'))
         .addSubcommand(subcommand =>
             subcommand
-                .setName('spam')
-                .setDescription('Spam koruması ayarlarını yönetir')
-                .addBooleanOption(option =>
-                    option.setName('active')
-                        .setDescription('Spam korumasını etkinleştir/devre dışı bırak')
-                        .setRequired(true))
-                .addIntegerOption(option =>
-                    option.setName('threshold')
-                        .setDescription('Kaç mesaj spam olarak sayılacak')
-                        .setMinValue(3)
-                        .setMaxValue(20))
-                .addIntegerOption(option =>
-                    option.setName('interval')
-                        .setDescription('Saniye cinsinden zaman aralığı')
-                        .setMinValue(1)
-                        .setMaxValue(60)))
+                .setName('toggle')
+                .setDescription('AutoMod özelliğini açıp kapatır')
+                .addStringOption(option =>
+                    option.setName('state')
+                        .setDescription('AutoMod durumu')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Aktif', value: 'enable' },
+                            { name: 'Devre Dışı', value: 'disable' }
+                        )))
         .addSubcommand(subcommand =>
             subcommand
-                .setName('raid')
-                .setDescription('İstila koruması ayarlarını yönetir')
-                .addBooleanOption(option =>
-                    option.setName('active')
-                        .setDescription('İstila korumasını etkinleştir/devre dışı bırak')
-                        .setRequired(true))
-                .addIntegerOption(option =>
-                    option.setName('threshold')
-                        .setDescription('Kaç yeni üye istila olarak sayılacak')
-                        .setMinValue(5)
-                        .setMaxValue(50))
-                .addIntegerOption(option =>
-                    option.setName('interval')
-                        .setDescription('Saniye cinsinden zaman aralığı')
-                        .setMinValue(5)
-                        .setMaxValue(120)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('profanity')
-                .setDescription('Küfür filtresini yönetir')
-                .addBooleanOption(option =>
-                    option.setName('active')
-                        .setDescription('Küfür filtresini etkinleştir/devre dışı bırak')
-                        .setRequired(true)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('wordlist')
-                .setDescription('Küfür listesini yönetir')
+                .setName('words')
+                .setDescription('Yasaklı kelime listesini yönetir')
                 .addStringOption(option =>
                     option.setName('action')
                         .setDescription('Yapılacak işlem')
                         .setRequired(true)
                         .addChoices(
-                            { name: 'Listele', value: 'list' },
+                            { name: 'Görüntüle', value: 'view' },
                             { name: 'Ekle', value: 'add' },
-                            { name: 'Kaldır', value: 'remove' }
+                            { name: 'Çıkar', value: 'remove' },
+                            { name: 'Temizle', value: 'clear' }
                         ))
                 .addStringOption(option =>
                     option.setName('word')
-                        .setDescription('Eklenecek veya kaldırılacak kelime'))),
-    
-    async execute(interaction) {
-        const client = interaction.client;
-        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag değeri        
-        const subcommand = interaction.options.getSubcommand();
+                        .setDescription('Eklenecek veya çıkarılacak kelime')
+                        .setRequired(false)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('spam')
+                .setDescription('Spam korumasını yapılandırır')
+                .addStringOption(option =>
+                    option.setName('action')
+                        .setDescription('Yapılacak işlem')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Durumu Göster', value: 'status' },
+                            { name: 'Aktifleştir', value: 'enable' },
+                            { name: 'Devre Dışı Bırak', value: 'disable' }
+                        )))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('spam-settings')
+                .setDescription('Spam koruması ayarlarını yapılandırır')
+                .addIntegerOption(option =>
+                    option.setName('threshold')
+                        .setDescription('Kaç mesaj spam olarak kabul edilecek (3-10)')
+                        .setMinValue(3)
+                        .setMaxValue(10)
+                        .setRequired(false))
+                .addIntegerOption(option =>
+                    option.setName('interval')
+                        .setDescription('Mesaj takip süresi - saniye (3-10)')
+                        .setMinValue(3)
+                        .setMaxValue(10)
+                        .setRequired(false))
+                .addIntegerOption(option =>
+                    option.setName('timeout')
+                        .setDescription('Susturma süresi - dakika (1-60)')
+                        .setMinValue(1)
+                        .setMaxValue(60)
+                        .setRequired(false)))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
+    async execute(interaction) {
         try {
-            switch (subcommand) {
-                case 'settings':
-                    await showSettings(interaction, client);
-                    break;
-                    
-                case 'spam':
-                    await updateSpamSettings(interaction, client);
-                    break;
-                    
-                case 'raid':
-                    await updateRaidSettings(interaction, client);
-                    break;
-                    
-                case 'profanity':
-                    await updateProfanitySettings(interaction, client);
-                    break;
-                    
-                case 'wordlist':
-                    await manageWordlist(interaction, client);
-                    break;
+            // Yetki kontrolü
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({
+                    content: 'Bu komutu kullanmak için **Yönetici** yetkisine sahip olmalısın!',
+                    ephemeral: true
+                });
+            }
+
+            const subcommand = interaction.options.getSubcommand();
+            
+            // Automod tablosunu kontrol et ve oluştur
+            await createAutoModTableIfNotExists();
+            
+            // Sunucu konfigürasyonunu al veya oluştur
+            const guildConfig = await getOrCreateAutoModConfig(interaction.guild.id);
+            
+            if (subcommand === 'status') {
+                return showAutoModStatus(interaction, guildConfig);
+            }
+            else if (subcommand === 'toggle') {
+                const state = interaction.options.getString('state');
+                return toggleAutoMod(interaction, guildConfig, state);
+            }
+            else if (subcommand === 'words') {
+                const action = interaction.options.getString('action');
+                const word = interaction.options.getString('word');
+                
+                return handleBannedWords(interaction, guildConfig, action, word);
+            }
+            else if (subcommand === 'spam') {
+                const action = interaction.options.getString('action');
+                return handleSpamProtection(interaction, guildConfig, action);
+            }
+            else if (subcommand === 'spam-settings') {
+                return configureSpamSettings(interaction, guildConfig);
             }
         } catch (error) {
-            console.error(`AutoMod komutunda hata: ${error}`);
-            await interaction.editReply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu. Lütfen daha sonra tekrar deneyin.'
+            console.error('AutoMod komutunda hata:', error);
+            return interaction.reply({
+                content: 'Komut çalıştırılırken bir hata oluştu!',
+                ephemeral: true
             });
         }
     }
 };
 
-async function showSettings(interaction, client) {
-    const settings = await client.automod.getGuildConfig(interaction.guild.id);
-    
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle('📊 AutoMod Ayarları')
-        .addFields(
-            { 
-                name: '🔄 Spam Koruması', 
-                value: settings.spam_protection ? '✅ Aktif' : '❌ Devre Dışı',
-                inline: true 
-            },
-            { 
-                name: '⚡ Spam Eşiği', 
-                value: `${settings.spam_threshold} mesaj / ${settings.spam_interval / 1000} saniye`,
-                inline: true 
-            },
-            { name: '\u200B', value: '\u200B', inline: true },
-            { 
-                name: '🛡️ İstila Koruması', 
-                value: settings.raid_protection ? '✅ Aktif' : '❌ Devre Dışı',
-                inline: true 
-            },
-            { 
-                name: '🔔 İstila Eşiği', 
-                value: `${settings.raid_threshold} üye / ${settings.raid_interval / 1000} saniye`,
-                inline: true 
-            },
-            { name: '\u200B', value: '\u200B', inline: true },
-            { 
-                name: '🤬 Küfür Filtresi', 
-                value: settings.profanity_filter ? '✅ Aktif' : '❌ Devre Dışı',
-                inline: true 
-            }
-        )
-        .setFooter({ text: 'Ayarları değiştirmek için /automod komutlarını kullanabilirsiniz' })
-        .setTimestamp();
+// Veritabanı fonksiyonları - getOrCreateAutoModConfig güncellenmesi gereken kısım
+async function getOrCreateAutoModConfig(guildId) {
+    try {
+        // Önce mevcut konfigürasyonu al
+        let config = await database.get(
+            'SELECT * FROM automod_configs WHERE guild_id = ?',
+            [guildId]
+        );
         
-    await interaction.editReply({ embeds: [embed] });
+        // Eğer konfig yoksa yeni oluştur
+        if (!config) {
+            await database.run(
+                'INSERT INTO automod_configs (guild_id, enabled, banned_words, spam_protection, spam_threshold, spam_interval, spam_timeout) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [guildId, 0, '[]', 0, 5, 5000, 300000]
+            );
+            
+            config = {
+                guild_id: guildId,
+                enabled: 0,
+                banned_words: '[]',
+                spam_protection: 0,
+                spam_threshold: 5,
+                spam_interval: 5000, // 5 saniye
+                spam_timeout: 300000 // 5 dakika
+            };
+        }
+        
+        // JSON string'i parse et
+        config.banned_words = JSON.parse(config.banned_words);
+        
+        return config;
+    } catch (error) {
+        console.error('AutoMod konfigürasyonu alınamadı:', error);
+        throw error;
+    }
 }
 
-async function updateSpamSettings(interaction, client) {
+// updateAutoModConfig fonksiyonunu güncelle
+async function updateAutoModConfig(guildId, config) {
     try {
-        // 1. Önce tablo varlığını kontrol et ve gerekirse oluştur
-        await client.database.run(`
-            CREATE TABLE IF NOT EXISTS guild_automod_settings (
+        const bannedWordsJson = JSON.stringify(config.banned_words);
+        
+        await database.run(
+            `UPDATE automod_configs SET 
+             enabled = ?, banned_words = ?, 
+             spam_protection = ?, spam_threshold = ?, 
+             spam_interval = ?, spam_timeout = ?,
+             updated_at = CURRENT_TIMESTAMP 
+             WHERE guild_id = ?`,
+            [
+                config.enabled ? 1 : 0, 
+                bannedWordsJson,
+                config.spam_protection ? 1 : 0,
+                config.spam_threshold,
+                config.spam_interval,
+                config.spam_timeout,
+                guildId
+            ]
+        );
+    } catch (error) {
+        console.error('AutoMod konfigürasyonu güncellenemedi:', error);
+        throw error;
+    }
+}
+async function createAutoModTableIfNotExists() {
+    try {
+        // AutoMod tablosunu güncellenmiş alanlarla oluştur
+        await database.run(`
+            CREATE TABLE IF NOT EXISTS automod_configs (
                 guild_id TEXT PRIMARY KEY,
-                spam_protection BOOLEAN DEFAULT 0,
+                enabled INTEGER DEFAULT 0,
+                banned_words TEXT DEFAULT '[]',
+                spam_protection INTEGER DEFAULT 0,
                 spam_threshold INTEGER DEFAULT 5,
                 spam_interval INTEGER DEFAULT 5000,
-                raid_protection BOOLEAN DEFAULT 0,
-                raid_threshold INTEGER DEFAULT 10,
-                raid_interval INTEGER DEFAULT 10000,
-                profanity_filter BOOLEAN DEFAULT 0,
+                spam_timeout INTEGER DEFAULT 300000,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        
-        // 2. Bu sunucu için kayıt yoksa varsayılan değerlerle oluştur
-        await client.database.run(`
-            INSERT OR IGNORE INTO guild_automod_settings 
-            (guild_id, spam_protection, spam_threshold, spam_interval, raid_protection, raid_threshold, raid_interval, profanity_filter)
-            VALUES (?, 0, 5, 5000, 0, 10, 10000, 0)
-        `, [interaction.guild.id]);
-        
-        // 3. Kullanıcı seçimlerini al
-        const active = interaction.options.getBoolean('active');
-        const threshold = interaction.options.getInteger('threshold');
-        const intervalSeconds = interaction.options.getInteger('interval');
-        
-        // 4. Değerleri güncelle
-        if (active !== null) {
-            await client.database.run(
-                'UPDATE guild_automod_settings SET spam_protection = ? WHERE guild_id = ?',
-                [active ? 1 : 0, interaction.guild.id]
-            );
-        }
-        
-        if (threshold) {
-            await client.database.run(
-                'UPDATE guild_automod_settings SET spam_threshold = ? WHERE guild_id = ?',
-                [threshold, interaction.guild.id]
-            );
-        }
-        
-        if (intervalSeconds) {
-            await client.database.run(
-                'UPDATE guild_automod_settings SET spam_interval = ? WHERE guild_id = ?',
-                [intervalSeconds * 1000, interaction.guild.id]
-            );
-        }
-        
-        // 5. Güncel ayarları al
-        const settings = await client.database.get(
-            'SELECT * FROM guild_automod_settings WHERE guild_id = ?',
-            [interaction.guild.id]
-        );
-        
-        // 6. Log oluştur
-        await client.logger.log(interaction.guild.id, 'config', {
-            description: 'Spam koruması ayarları güncellendi',
-            user: {
-                id: interaction.user.id,
-                tag: interaction.user.tag
-            },
-            changes: {
-                active: active !== null ? active : Boolean(settings.spam_protection),
-                threshold: threshold || settings.spam_threshold,
-                interval: (intervalSeconds || (settings.spam_interval / 1000)) + ' saniye'
-            }
-        });
-        
-        // 7. Kullanıcıya yanıt verme embed'i
+    } catch (error) {
+        console.error('AutoMod tablosu oluşturma hatası:', error);
+        throw error;
+    }
+}
+
+// Spam koruma fonksiyonları
+async function handleSpamProtection(interaction, config, action) {
+    if (action === 'status') {
         const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('✅ Spam Koruması Ayarları Güncellendi')
-            .setDescription(`Spam koruması ${settings.spam_protection ? 'etkinleştirildi' : 'devre dışı bırakıldı'}`)
+            .setColor(config.spam_protection ? '#00ff00' : '#ff0000')
+            .setTitle('Spam Koruması Durumu')
+            .setDescription(`Spam koruması şu anda **${config.spam_protection ? 'Aktif' : 'Devre Dışı'}**`)
             .addFields(
-                { 
-                    name: '⚡ Spam Eşiği', 
-                    value: `${settings.spam_threshold} mesaj`, 
-                    inline: true 
-                },
-                { 
-                    name: '⏱️ Zaman Aralığı', 
-                    value: `${settings.spam_interval / 1000} saniye`, 
-                    inline: true 
-                }
+                { name: 'Eşik Değeri', value: `${config.spam_threshold} mesaj`, inline: true },
+                { name: 'Kontrol Süresi', value: `${config.spam_interval / 1000} saniye`, inline: true },
+                { name: 'Susturma Süresi', value: `${config.spam_timeout / 60000} dakika`, inline: true }
             )
             .setTimestamp();
-            
-        await interaction.editReply({ embeds: [embed] });
-    } catch (error) {
-        console.error('Spam ayarları güncellenirken hata:', error);
-        await interaction.editReply({ 
-            content: `Spam ayarları güncellenirken bir hata oluştu: ${error.message}` 
+        
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    else if (action === 'enable') {
+        config.spam_protection = true;
+        await updateAutoModConfig(interaction.guild.id, config);
+        
+        return interaction.reply({
+            content: `Spam koruması **aktifleştirildi**. ${config.spam_interval / 1000} saniye içinde ${config.spam_threshold} mesaj gönderenler ${config.spam_timeout / 60000} dakika susturulacak.`,
+            ephemeral: true
+        });
+    }
+    else if (action === 'disable') {
+        config.spam_protection = false;
+        await updateAutoModConfig(interaction.guild.id, config);
+        
+        return interaction.reply({
+            content: 'Spam koruması **devre dışı bırakıldı**.',
+            ephemeral: true
         });
     }
 }
 
-async function updateRaidSettings(interaction, client) {
-    const active = interaction.options.getBoolean('active');
+async function configureSpamSettings(interaction, config) {
     const threshold = interaction.options.getInteger('threshold');
-    const intervalSeconds = interaction.options.getInteger('interval');
+    const interval = interaction.options.getInteger('interval');
+    const timeout = interaction.options.getInteger('timeout');
     
-    // Mevcut ayarları al
-    const settings = await client.automod.getGuildConfig(interaction.guild.id);
+    if (!threshold && !interval && !timeout) {
+        return interaction.reply({
+            content: 'En az bir ayar belirtmelisiniz (threshold, interval veya timeout).',
+            ephemeral: true
+        });
+    }
     
-    // Ayarları güncelle
-    const updatedSettings = {
-        ...settings,
-        raid_protection: active ? 1 : 0
-    };
+    let changes = [];
     
-    if (threshold) updatedSettings.raid_threshold = threshold;
-    if (intervalSeconds) updatedSettings.raid_interval = intervalSeconds * 1000; // Milisaniyeye çevir
+    if (threshold) {
+        config.spam_threshold = threshold;
+        changes.push(`Eşik değeri: ${threshold} mesaj`);
+    }
     
-    // Veritabanına kaydet
-    await client.automod.updateGuildConfig(interaction.guild.id, updatedSettings);
+    if (interval) {
+        config.spam_interval = interval * 1000; // Saniyeyi milisaniyeye çevir
+        changes.push(`Kontrol süresi: ${interval} saniye`);
+    }
     
-    // Log oluştur
-    await client.logger.log(interaction.guild.id, 'config', {
-        description: 'İstila koruması ayarları güncellendi',
-        user: {
-            id: interaction.user.id,
-            tag: interaction.user.tag
-        },
-        changes: {
-            active: active,
-            threshold: threshold || settings.raid_threshold,
-            interval: (intervalSeconds ? intervalSeconds : settings.raid_interval / 1000) + ' saniye'
-        }
+    if (timeout) {
+        config.spam_timeout = timeout * 60000; // Dakikayı milisaniyeye çevir
+        changes.push(`Susturma süresi: ${timeout} dakika`);
+    }
+    
+    await updateAutoModConfig(interaction.guild.id, config);
+    
+    return interaction.reply({
+        content: `Spam koruması ayarları güncellendi:\n${changes.join('\n')}`,
+        ephemeral: true
     });
-    
+}
+
+// showAutoModStatus fonksiyonunu da güncelleyelim
+async function showAutoModStatus(interaction, config) {
     const embed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle('✅ İstila Koruması Ayarları Güncellendi')
-        .setDescription(`İstila koruması ${active ? 'etkinleştirildi' : 'devre dışı bırakıldı'}`)
+        .setColor(config.enabled ? '#00ff00' : '#ff0000')
+        .setTitle('AutoMod Durumu')
+        .setDescription(`AutoMod şu anda **${config.enabled ? 'Aktif' : 'Devre Dışı'}**`)
         .addFields(
-            { 
-                name: '🔔 İstila Eşiği', 
-                value: `${threshold || settings.raid_threshold} üye`, 
-                inline: true 
-            },
-            { 
-                name: '⏱️ Zaman Aralığı', 
-                value: `${intervalSeconds || settings.raid_interval / 1000} saniye`, 
-                inline: true 
-            }
+            { name: 'Yasaklı Kelime Sayısı', value: `${config.banned_words.length}`, inline: true },
+            { name: 'Spam Koruması', value: `${config.spam_protection ? 'Aktif' : 'Devre Dışı'}`, inline: true }
         )
         .setTimestamp();
-        
-    await interaction.editReply({ embeds: [embed] });
-}
-
-async function updateProfanitySettings(interaction, client) {
-    const active = interaction.options.getBoolean('active');
     
-    // Mevcut ayarları al
-    const settings = await client.automod.getGuildConfig(interaction.guild.id);
-    
-    // Ayarları güncelle
-    const updatedSettings = {
-        ...settings,
-        profanity_filter: active ? 1 : 0
-    };
-    
-    // Veritabanına kaydet
-    await client.automod.updateGuildConfig(interaction.guild.id, updatedSettings);
-    
-    // Küfür listesini yeniden yükle
-    client.automod.loadProfanityList();
-    
-    // Log oluştur
-    await client.logger.log(interaction.guild.id, 'config', {
-        description: 'Küfür filtresi ayarları güncellendi',
-        user: {
-            id: interaction.user.id,
-            tag: interaction.user.tag
-        },
-        changes: {
-            active: active
-        }
-    });
-    
-    const embed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle('✅ Küfür Filtresi Ayarları Güncellendi')
-        .setDescription(`Küfür filtresi ${active ? 'etkinleştirildi' : 'devre dışı bırakıldı'}`)
-        .setTimestamp();
-        
-    await interaction.editReply({ embeds: [embed] });
-}
-
-async function manageWordlist(interaction, client) {
-    const action = interaction.options.getString('action');
-    const word = interaction.options.getString('word');
-    
-    switch (action) {
-        case 'list':
-            const wordList = await client.automod.getProfanityList();
-            
-            if (wordList.length === 0) {
-                await interaction.editReply({ 
-                    content: 'Küfür listesinde hiç kelime bulunmuyor.'
-                });
-                return;
-            }
-            
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle('🔍 Küfür Listesi')
-                .setDescription('Aşağıdaki kelimeler filtrelenmektedir:')
-                .addFields(
-                    { name: 'Kelimeler', value: wordList.join(', ') }
-                )
-                .setFooter({ text: `Toplam ${wordList.length} kelime` })
-                .setTimestamp();
-                
-            await interaction.editReply({ embeds: [embed] });
-            break;
-            
-        case 'add':
-            if (!word) {
-                await interaction.editReply({ 
-                    content: 'Eklemek istediğiniz kelimeyi belirtmelisiniz.'
-                });
-                return;
-            }
-            
-            const added = await client.automod.addProfanityWord(word);
-            
-            if (added) {
-                // Log oluştur
-                await client.logger.log(interaction.guild.id, 'config', {
-                    description: 'Küfür listesine kelime eklendi',
-                    user: {
-                        id: interaction.user.id,
-                        tag: interaction.user.tag
-                    },
-                    word: word
-                });
-                
-                // Küfür listesini yeniden yükle
-                client.automod.loadProfanityList();
-                
-                await interaction.editReply({ 
-                    content: `✅ "${word}" kelimesi küfür listesine eklendi.`
-                });
-            } else {
-                await interaction.editReply({ 
-                    content: `❌ "${word}" kelimesi zaten listede mevcut.`
-                });
-            }
-            break;
-            
-        case 'remove':
-            if (!word) {
-                await interaction.editReply({ 
-                    content: 'Kaldırmak istediğiniz kelimeyi belirtmelisiniz.'
-                });
-                return;
-            }
-            
-            const removed = await client.automod.removeProfanityWord(word);
-            
-            if (removed) {
-                // Log oluştur
-                await client.logger.log(interaction.guild.id, 'config', {
-                    description: 'Küfür listesinden kelime kaldırıldı',
-                    user: {
-                        id: interaction.user.id,
-                        tag: interaction.user.tag
-                    },
-                    word: word
-                });
-                
-                // Küfür listesini yeniden yükle
-                client.automod.loadProfanityList();
-                
-                await interaction.editReply({ 
-                    content: `✅ "${word}" kelimesi küfür listesinden kaldırıldı.`
-                });
-            } else {
-                await interaction.editReply({ 
-                    content: `❌ "${word}" kelimesi listede bulunamadı.`
-                });
-            }
-            break;
+    if (config.spam_protection) {
+        embed.addFields(
+            { name: 'Spam Eşiği', value: `${config.spam_threshold} mesaj / ${config.spam_interval / 1000} saniye`, inline: true },
+            { name: 'Susturma Süresi', value: `${config.spam_timeout / 60000} dakika`, inline: true }
+        );
     }
+    
+    if (config.banned_words.length > 0) {
+        const wordsList = config.banned_words.join(', ');
+        embed.addFields({ name: 'Yasaklı Kelimeler', value: wordsList });
+    }
+    
+    return interaction.reply({ embeds: [embed], ephemeral: true });
 }
