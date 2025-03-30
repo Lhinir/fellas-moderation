@@ -247,7 +247,7 @@ client.once('ready', async () => {
     
     // Durum mesajını ayarla
     client.user.setPresence({
-        activities: [{ name: 'fellas gururla sunar', type: ActivityType.Playing }],
+        activities: [{ name: '/yardım', type: ActivityType.Playing }],
         status: 'online',
     });
     
