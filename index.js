@@ -281,6 +281,7 @@ client.on('guildCreate', async (guild) => {
 });
 
 // Slash komut ve diğer etkileşimler için handler
+/*
 client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
@@ -374,7 +375,7 @@ client.on('interactionCreate', async (interaction) => {
         console.error('Global interaction işleme hatası:', globalError);
     }
 });
-
+*/
 // Güvenli yanıt fonksiyonu
 async function safeReply(interaction, content) {
     try {

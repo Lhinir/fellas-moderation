@@ -1,4 +1,4 @@
-// src/commands/moderation/warn.js
+// src/commands/moderation/warn.js - Düzeltilmiş
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
@@ -30,30 +30,24 @@ module.exports = {
             const user = interaction.options.getUser('user');
             const reason = interaction.options.getString('reason') || 'Sebep belirtilmedi';
             
+            // İşlemin zaman alabileceğini bildirmek için deferReply kullan
+            await interaction.deferReply();
+            
             // Kullanıcıyı kontrol et
             const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
             
             if (!targetMember) {
-                return interaction.reply({ 
-                    content: 'Bu kullanıcı sunucuda değil!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Bu kullanıcı sunucuda değil!');
             }
             
             // Kendini uyaramasın
             if (user.id === interaction.user.id) {
-                return interaction.reply({
-                    content: 'Kendinizi uyaramazsınız!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Kendinizi uyaramazsınız!');
             }
             
             // Botu uyaramasın
             if (user.id === interaction.client.user.id) {
-                return interaction.reply({
-                    content: 'Beni uyaramazsın!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Beni uyaramazsın!');
             }
             
             // Yetkili kendisinden üst rütbeyi uyaramasın
@@ -62,10 +56,7 @@ module.exports = {
                 const targetHighestRole = targetMember.roles.highest.position;
                 
                 if (executorHighestRole <= targetHighestRole) {
-                    return interaction.reply({ 
-                        content: 'Kendinizle aynı veya daha yüksek role sahip kullanıcıları uyaramazsınız.',
-                        ephemeral: true
-                    });
+                    return interaction.editReply('Kendinizle aynı veya daha yüksek role sahip kullanıcıları uyaramazsınız.');
                 }
             }
             
@@ -80,21 +71,15 @@ module.exports = {
                 );
             } catch (dbError) {
                 console.error('Uyarı veritabanına kaydedilemedi:', dbError);
-                return interaction.reply({
-                    content: 'Uyarı kaydedilemedi! Lütfen daha sonra tekrar deneyin.',
-                    ephemeral: true
-                });
+                return interaction.editReply('Uyarı kaydedilemedi! Lütfen daha sonra tekrar deneyin.');
             }
             
             // Uyarı sayısını al
             const warnings = await database.warnings.getWarnings(interaction.guild.id, user.id);
             const warningCount = warnings ? warnings.length : 1;
             
-            // Başarılı yanıt
-            await interaction.reply({ 
-                content: `**${user.tag}** uyarıldı (${warningCount}. uyarı).\n**Sebep:** ${reason}`,
-                ephemeral: false
-            });
+            // Başarılı yanıt - zaten deferReply yapıldığı için editReply kullan
+            await interaction.editReply(`**${user.tag}** uyarıldı (${warningCount}. uyarı).\n**Sebep:** ${reason}`);
             
             // Kullanıcıya DM göndermeyi dene
             try {
@@ -121,10 +106,19 @@ module.exports = {
 
         } catch (error) {
             console.error('Warn komutu hatası:', error);
-            await interaction.reply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu!',
-                ephemeral: true
-            }).catch(console.error);
+            
+            // Eğer henüz yanıt verilmediyse reply, aksi halde followUp kullan
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ 
+                    content: 'Komut çalıştırılırken bir hata oluştu!',
+                    ephemeral: true
+                }).catch(console.error);
+            } else {
+                await interaction.followUp({ 
+                    content: 'Komut çalıştırılırken bir hata oluştu!',
+                    ephemeral: true
+                }).catch(console.error);
+            }
         }
     }
 };

@@ -1,4 +1,4 @@
-// src/commands/moderation/ban.js
+// src/commands/moderation/ban.js - Düzeltilmiş
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
@@ -24,45 +24,36 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
     
     async execute(interaction) {
+        // Önce deferReply kullan - işlem biraz zaman alabilir
+        await interaction.deferReply();
+        
         try {
             // Yetkiyi kontrol et
             if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) {
-                return interaction.reply({ 
-                    content: 'Bu komutu kullanmak için **Üyeleri Yasakla** yetkisine sahip olmalısın!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Bu komutu kullanmak için **Üyeleri Yasakla** yetkisine sahip olmalısın!');
             }
 
             const user = interaction.options.getUser('user');
             const reason = interaction.options.getString('reason') || 'Sebep belirtilmedi';
             const days = interaction.options.getInteger('days') || 0;
             
-            // Kullanıcıyı kontrol et
-            const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
-            
             // Kendisini banlayamasın
             if (user.id === interaction.user.id) {
-                return interaction.reply({
-                    content: 'Kendinizi banlayamazsınız!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Kendinizi banlayamazsınız!');
             }
             
             // Botu banlayamasın
             if (user.id === interaction.client.user.id) {
-                return interaction.reply({
-                    content: 'Beni banlayamazsın!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Beni banlayamazsın!');
             }
+            
+            // Kullanıcıyı kontrol et
+            const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
             
             if (targetMember) {
                 // Hedef banlanabilir mi kontrol et
                 if (!targetMember.bannable) {
-                    return interaction.reply({ 
-                        content: 'Bu kullanıcıyı yasaklama yetkim yok veya kullanıcı benden daha yüksek bir role sahip.',
-                        ephemeral: true
-                    });
+                    return interaction.editReply('Bu kullanıcıyı yasaklama yetkim yok veya kullanıcı benden daha yüksek bir role sahip.');
                 }
 
                 // Yetkili kendisinden üst rütbeyi banlayamasın
@@ -71,10 +62,7 @@ module.exports = {
                     const targetHighestRole = targetMember.roles.highest.position;
                     
                     if (executorHighestRole <= targetHighestRole) {
-                        return interaction.reply({ 
-                            content: 'Kendinizle aynı veya daha yüksek role sahip kullanıcıları yasaklayamazsınız.',
-                            ephemeral: true
-                        });
+                        return interaction.editReply('Kendinizle aynı veya daha yüksek role sahip kullanıcıları yasaklayamazsınız.');
                     }
                 }
             }
@@ -86,10 +74,7 @@ module.exports = {
             });
             
             // Başarılı yanıt
-            await interaction.reply({ 
-                content: `**${user.tag}** başarıyla yasaklandı.\n**Sebep:** ${reason}`,
-                ephemeral: false
-            });
+            await interaction.editReply(`**${user.tag}** başarıyla yasaklandı.\n**Sebep:** ${reason}`);
             
             // Veritabanına işlemi kaydet (modActions tablosu varsa)
             try {
@@ -110,10 +95,7 @@ module.exports = {
 
         } catch (error) {
             console.error('Ban komutu hatası:', error);
-            await interaction.reply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu!',
-                ephemeral: true
-            }).catch(console.error);
+            return interaction.editReply('Komut çalıştırılırken bir hata oluştu!');
         }
     }
 };
