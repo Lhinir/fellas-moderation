@@ -7,7 +7,7 @@ const database = require('../modules/database');
 const userMessageCache = new Map();
 
 // Varsayılan timeout süreleri (dakika cinsinden)
-const DEFAULT_TIMEOUT_DURATIONS = [5, 10, 30, 60]; // Kademeli olarak artan süreler
+const DEFAULT_TIMEOUT_DURATIONS = [1, 3, 5, 10, 30]; // Kademeli olarak artan süreler
 
 // Varsayılan ayarlar
 const DEFAULT_SPAM_THRESHOLD = 5; // 5 mesaj

@@ -71,15 +71,7 @@ async function setupDatabase() {
         
         // warnings tablosu - Kullanıcı uyarıları
         await runSQL(`
-            CREATE TABLE IF NOT EXISTS warnings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT,
-                user_id TEXT,
-                moderator_id TEXT,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
-            )
+            ALTER TABLE warnings ADD COLUMN automated INTEGER DEFAULT 0
         `);
         console.log('✅ warnings tablosu oluşturuldu');
         
