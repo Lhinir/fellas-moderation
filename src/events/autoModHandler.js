@@ -19,7 +19,7 @@ const TIMEOUT_LEVELS = {
 const RESET_PERIOD = 24 * 60 * 60 * 1000; // 24 saat
 
 // Eşik değerinin üzerine ekstra kaç mesaj silinecek
-const EXTRA_DELETE_COUNT = 3; // Eşik + 1 mesaj
+const EXTRA_DELETE_COUNT = 1; // Eşik + 1 mesaj
 
 module.exports = {
     name: 'messageCreate',
