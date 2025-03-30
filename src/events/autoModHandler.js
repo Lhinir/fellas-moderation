@@ -1,4 +1,4 @@
-// src/events/autoModHandler.js - Basitleştirilmiş ve Sağlam Versiyon
+// src/events/autoModHandler.js - Mesaj silme özelliği iyileştirilmiş
 
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const database = require('../modules/database');
@@ -13,6 +13,9 @@ const DEFAULT_TIMEOUT_DURATIONS = [5, 10, 30, 60]; // Kademeli olarak artan sür
 const DEFAULT_SPAM_THRESHOLD = 5; // 5 mesaj
 const DEFAULT_SPAM_INTERVAL = 5000; // 5 saniye
 const DEFAULT_SPAM_TIMEOUT = 300000; // 5 dakika
+
+// Silinecek mesaj sayısı
+const MESSAGES_TO_DELETE = 8; // Kullanıcının son 8 mesajını sil
 
 module.exports = {
     name: 'messageCreate',
@@ -130,34 +133,6 @@ module.exports = {
                 
                 console.log(`[AutoMod] Timeout süresi: ${timeoutMinutes} dakika (Seviye ${spamLevel})`);
                 
-                // Mesajları silmeye çalış
-                let deletedCount = 0;
-                try {
-                    // Son mesajları getir
-                    const fetchedMessages = await message.channel.messages.fetch({ 
-                        limit: 30 // Son 30 mesajı al
-                    });
-                    
-                    // Kullanıcının mesajlarını filtrele
-                    const userMessages = fetchedMessages.filter(msg => 
-                        msg.author.id === userId &&
-                        now - msg.createdTimestamp < spamInterval * 2 // Biraz daha geniş bir aralık
-                    );
-                    
-                    if (userMessages.size > 0) {
-                        await message.channel.bulkDelete(userMessages)
-                            .then(deleted => {
-                                deletedCount = deleted.size;
-                                console.log(`[AutoMod] ${deletedCount} mesaj silindi.`);
-                            })
-                            .catch(deleteError => {
-                                console.error('[AutoMod] Mesaj silme hatası:', deleteError);
-                            });
-                    }
-                } catch (fetchError) {
-                    console.error('[AutoMod] Mesaj getirme hatası:', fetchError);
-                }
-                
                 // Kullanıcıyı sustur
                 try {
                     const member = await message.guild.members.fetch(userId);
@@ -170,6 +145,55 @@ module.exports = {
                     }
                 } catch (timeoutError) {
                     console.error('[AutoMod] Susturma hatası:', timeoutError);
+                }
+                
+                // ÖNEMLİ: SPAM YAPILAN KANALDAN KULLANICININ SON 8 MESAJINI SİL
+                let deletedCount = 0;
+                try {
+                    console.log(`[AutoMod] Kullanıcının mesajları siliniyor: Kanal ID ${channelId}`);
+                    
+                    // Son 20 mesajı getir (Discord API limiti 100, ama verimlilik için 20 yeterli)
+                    const fetchedMessages = await message.channel.messages.fetch({ limit: 20 });
+                    console.log(`[AutoMod] Kanaldan ${fetchedMessages.size} mesaj yüklendi.`);
+                    
+                    // Kullanıcının mesajlarını filtrele
+                    const userMessages = fetchedMessages.filter(msg => msg.author.id === userId);
+                    console.log(`[AutoMod] Kullanıcıya ait ${userMessages.size} mesaj bulundu.`);
+                    
+                    // Son 8 mesajı al
+                    const messagesToDelete = userMessages.first(MESSAGES_TO_DELETE);
+                    
+                    if (messagesToDelete.length > 0) {
+                        console.log(`[AutoMod] Silinecek ${messagesToDelete.length} mesaj.`);
+                        
+                        // Mesajları toplu sil (14 günden eski değilse)
+                        await message.channel.bulkDelete(messagesToDelete, true)
+                            .then(deleted => {
+                                deletedCount = deleted.size;
+                                console.log(`[AutoMod] ${deletedCount} mesaj başarıyla silindi.`);
+                            })
+                            .catch(error => {
+                                console.error('[AutoMod] Toplu mesaj silme hatası:', error);
+                                
+                                // Toplu silme başarısız olursa, tek tek silmeyi dene
+                                if (error.code === 50034) { // 14 günden eski mesaj hatası
+                                    console.log('[AutoMod] Bazı mesajlar 14 günden eski. Tek tek silme deneniyor...');
+                                    
+                                    messagesToDelete.forEach(async (msg) => {
+                                        try {
+                                            await msg.delete();
+                                            deletedCount++;
+                                        } catch (individualError) {
+                                            console.error(`[AutoMod] Tekil mesaj silme hatası: ${individualError.message}`);
+                                        }
+                                    });
+                                }
+                            });
+                    } else {
+                        console.log('[AutoMod] Silinecek mesaj bulunamadı.');
+                    }
+                } catch (deleteError) {
+                    console.error('[AutoMod] Mesaj silme işlemi sırasında hata:', deleteError);
                 }
                 
                 // Spam geçmişini güncelle
