@@ -14,7 +14,7 @@ module.exports = {
             
             // Durum mesajını ayarla
             client.user.setPresence({
-                activities: [{ name: 'fellas gururla sunar', type: ActivityType.Playing }],
+                activities: [{ name: 'Fellas Moderation', type: ActivityType.Playing }],
                 status: 'online',
             });
             
@@ -37,26 +37,6 @@ module.exports = {
                 });
             } catch (collectError) {
                 console.error('Komutları toplama hatası:', collectError);
-            }
-            
-            // Komutları kaydet
-            if (commands.length > 0) {
-                const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-                
-                try {
-                    console.log(`${commands.length} adet slash komutu kaydediliyor...`);
-                    
-                    await rest.put(
-                        Routes.applicationCommands(client.user.id),
-                        { body: commands },
-                    );
-                    
-                    console.log('Slash komutları başarıyla kaydedildi!');
-                } catch (apiError) {
-                    console.error('Slash komutlarını kaydetme hatası:', apiError);
-                }
-            } else {
-                console.warn('Kaydedilecek geçerli komut bulunamadı!');
             }
             
             // Tüm sunucuları veritabanında başlat

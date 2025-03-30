@@ -1,4 +1,4 @@
-// deploy-commands.js - Sunucuya özel komutlar için
+// deploy-commands.js - Sadece sunucuya özel kayıt kullan
 
 require('dotenv').config();
 const { REST } = require('@discordjs/rest');
@@ -58,7 +58,7 @@ console.log(`Hedef Sunucu ID: ${process.env.GUILD_ID}`);
     try {
         console.log(`${commands.length} adet slash komutunu belirli bir sunucuya kaydediliyor...`);
         
-        // Sadece belirli bir sunucu için komutları kaydet
+        // SADECE sunucuya özel kayıt kullan - global kayıt kısmını kaldır
         const data = await rest.put(
             Routes.applicationGuildCommands(process.env.APP_ID, process.env.GUILD_ID),
             { body: commands },
