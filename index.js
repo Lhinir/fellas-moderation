@@ -1,4 +1,4 @@
-// index.js - SQLite veritabanı entegrasyonu ile güncellenmiş
+// index.js - Periyodik görevler eklenmiş
 
 require('dotenv').config();
 const { Client, Collection, GatewayIntentBits, Partials, ActivityType } = require('discord.js');
@@ -49,6 +49,7 @@ for (const folder of commandFolders) {
 // Butonları yükle
 const buttonsPath = path.join(__dirname, 'src/buttons');
 
+// Klasörün var olup olmadığını kontrol et
 if (fs.existsSync(buttonsPath)) {
     const buttonFiles = fs.readdirSync(buttonsPath).filter(file => file.endsWith('.js'));
 
@@ -77,12 +78,36 @@ for (const file of eventFiles) {
     const event = require(filePath);
     
     if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args));
+        client.once(event.name, (...args) => event.execute(...args, client));
     } else {
-        client.on(event.name, (...args) => event.execute(...args));
+        client.on(event.name, (...args) => event.execute(...args, client));
     }
     
     console.log(`Event yüklendi: ${event.name}`);
+}
+
+// Periyodik temizlik görevleri
+async function setupPeriodicTasks() {
+    // Her 6 saatte bir spam geçmişlerini kontrol et ve süresi dolmuş olanları sıfırla
+    setInterval(async () => {
+        try {
+            const now = new Date().toISOString();
+            
+            // Süresi dolmuş spam geçmişlerini sıfırla
+            const result = await database.run(
+                'UPDATE spam_history SET spam_count = 1 WHERE reset_after < ?',
+                [now]
+            );
+            
+            if (result && result.changes > 0) {
+                console.log(`${result.changes} kullanıcının spam geçmişi sıfırlandı.`);
+            }
+        } catch (error) {
+            console.error('Periyodik temizlik hatası:', error);
+        }
+    }, 6 * 60 * 60 * 1000); // 6 saat
+    
+    console.log('Periyodik temizlik görevleri başlatıldı.');
 }
 
 // Bot başlangıç fonksiyonu
@@ -117,6 +142,9 @@ client.once('ready', async () => {
     }
     
     console.log(`${client.guilds.cache.size} sunucu veritabanında hazırlandı.`);
+    
+    // Periyodik görevleri başlat
+    setupPeriodicTasks();
 });
 
 // Yeni sunucu eklendiğinde
@@ -125,68 +153,6 @@ client.on('guildCreate', async (guild) => {
     await database.guilds.setupGuild(guild.id);
     console.log(`Yeni sunucu eklendi ve veritabanına kaydedildi: ${guild.name} (${guild.id})`);
 });
-
-// Slash komut işleyici
-/*
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-
-        if (!command) {
-            console.error(`${interaction.commandName} adlı komut bulunamadı.`);
-            return;
-        }
-
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(`Komut çalıştırma hatası:`, error);
-            
-            // Eğer zaten yanıtlanmamışsa yanıtla
-            if (!interaction.replied && !interaction.deferred) {
-                try {
-                    await interaction.reply({ 
-                        content: 'Komut çalıştırılırken bir hata oluştu!', 
-                        ephemeral: true 
-                    });
-                } catch (replyError) {
-                    console.error('Hata mesajı gönderirken hata:', replyError);
-                }
-            } else if (interaction.deferred && !interaction.replied) {
-                // Eğer ertelenmiş ama yanıtlanmamışsa
-                try {
-                    await interaction.editReply({ 
-                        content: 'Komut çalıştırılırken bir hata oluştu!' 
-                    });
-                } catch (editError) {
-                    console.error('Hata mesajı düzenlerken hata:', editError);
-                }
-            }
-        }
-    } else if (interaction.isButton()) {
-        const button = client.buttons.get(interaction.customId);
-        
-        if (!button) return;
-        
-        try {
-            await button.execute(interaction);
-        } catch (error) {
-            console.error(`Buton işleme hatası:`, error);
-            
-            if (!interaction.replied && !interaction.deferred) {
-                try {
-                    await interaction.reply({ 
-                        content: 'Buton işlenirken bir hata oluştu!', 
-                        ephemeral: true 
-                    });
-                } catch (replyError) {
-                    console.error('Buton hata mesajı gönderirken hata:', replyError);
-                }
-            }
-        }
-    }
-});
-*/
 
 // Botu başlat
 startBot();
