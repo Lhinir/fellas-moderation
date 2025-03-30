@@ -1,7 +1,7 @@
-// src/commands/clear.js
+// src/commands/moderation/clear.js - Hata düzeltmesi
 
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const logger = require('../utils/logger');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -39,6 +39,7 @@ module.exports = {
                     return null;
                 });
 
+            // Eğer mesaj silme başarısız olduysa, fonksiyondan çık
             if (!messages) return;
 
             // Başarılı yanıt
@@ -47,22 +48,58 @@ module.exports = {
                 ephemeral: true 
             });
 
-            // Logger modülü ile log gönder
-            logger.log({
-                type: 'MESSAGE_DELETE_BULK',
-                guild: interaction.guild,
-                moderator: interaction.user,
-                channel: channel,
-                count: messages.size,
-                logMessage: `${interaction.user.tag} (${interaction.user.id}) tarafından ${channel.name} kanalında ${messages.size} mesaj silindi.`
+            // Log gönder
+            await sendLogEmbed(interaction, messages.size).catch(error => {
+                console.error('Log gönderme hatası:', error);
+                // Burada interaction.followUp kullanmıyoruz çünkü log hatası kullanıcıyı ilgilendirmiyor
             });
 
         } catch (error) {
             console.error('Clear komutu hatası:', error);
-            await interaction.reply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu!', 
-                ephemeral: true 
-            });
+            
+            // Eğer etkileşime henüz cevap verilmediyse cevap ver
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ 
+                    content: 'Komut çalıştırılırken bir hata oluştu!', 
+                    ephemeral: true 
+                });
+            }
         }
     }
 };
+
+// Log mesajı gönderen yardımcı fonksiyon
+async function sendLogEmbed(interaction, messageCount) {
+    const guild = interaction.guild;
+    
+    // SQLite'dan log kanalını al
+    const logChannelId = await database.logs.getLogChannel(guild.id, 'moderation');
+    
+    if (!logChannelId) {
+        console.log('Bu sunucu için moderasyon log kanalı ayarlanmamış.');
+        return;
+    }
+    
+    // Log kanalını bul
+    const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+    if (!logChannel) {
+        console.error('Moderasyon log kanalı bulunamadı! ID:', logChannelId);
+        return;
+    }
+
+    // Embed log mesajı oluştur
+    const logEmbed = new EmbedBuilder()
+        .setColor('#ff9900') // Turuncu
+        .setTitle('⚠️ Mesaj Temizleme Logu')
+        .setDescription(`**${messageCount}** mesaj silindi`)
+        .addFields(
+            { name: 'Moderatör', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+            { name: 'Kanal', value: `<#${interaction.channel.id}>`, inline: true },
+            { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+        )
+        .setFooter({ text: `Moderatör ID: ${interaction.user.id} • Kanal ID: ${interaction.channel.id}` })
+        .setTimestamp();
+
+    // Logu gönder
+    await logChannel.send({ embeds: [logEmbed] });
+}

@@ -1,15 +1,12 @@
-// index.js
-const { Client, Collection, GatewayIntentBits, Partials, Events } = require('discord.js');
-const { readdirSync } = require('fs');
-const path = require('path');
+// index.js - SQLite veritabanı entegrasyonu ile güncellenmiş
+
 require('dotenv').config();
+const { Client, Collection, GatewayIntentBits, Partials, ActivityType } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+const database = require('./src/modules/database');
 
-// Modülleri içe aktar
-const Database = require('./src/modules/database.js');
-const Logger = require('./src/modules/logger.js');
-const AutoMod = require('./src/modules/automod.js');
-
-// Client oluştur
+// Intents ayarla
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -19,99 +16,183 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages
     ],
-    partials: [
-        Partials.Channel,
-        Partials.Message,
-        Partials.GuildMember,
-        Partials.User
-    ]
+    partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember]
 });
 
-// Client koleksiyonları
+// Koleksiyonları tanımla
 client.commands = new Collection();
 client.buttons = new Collection();
-client.selectMenus = new Collection();
-
-// Modülleri client'a ekle
-client.database = new Database();
-client.logger = new Logger(client);
-client.automod = new AutoMod(client);
+client.cooldowns = new Collection();
 
 // Komutları yükle
-const commandFolders = readdirSync(path.join(__dirname, 'src/commands'));
+const foldersPath = path.join(__dirname, 'src/commands');
+const commandFolders = fs.readdirSync(foldersPath);
 
 for (const folder of commandFolders) {
-    const commandFiles = readdirSync(path.join(__dirname, `src/commands/${folder}`))
-        .filter(file => file.endsWith('.js'));
+    const commandsPath = path.join(foldersPath, folder);
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
     
     for (const file of commandFiles) {
-        const command = require(`./src/commands/${folder}/${file}`);
-        client.commands.set(command.data.name, command);
-        console.log(`Komut yüklendi: ${command.data.name}`);
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        
+        // Komutun gerekli özelliklere sahip olduğunu kontrol et
+        if ('data' in command && 'execute' in command) {
+            client.commands.set(command.data.name, command);
+            console.log(`Komut yüklendi: ${command.data.name}`);
+        } else {
+            console.log(`[UYARI] ${filePath} komutu "data" veya "execute" özelliğine sahip değil.`);
+        }
     }
 }
 
-// Eventları yükle
-const eventFiles = readdirSync(path.join(__dirname, 'src/events'))
-    .filter(file => file.endsWith('.js'));
+// Butonları yükle
+const buttonsPath = path.join(__dirname, 'src/buttons');
+
+if (fs.existsSync(buttonsPath)) {
+    const buttonFiles = fs.readdirSync(buttonsPath).filter(file => file.endsWith('.js'));
+
+    for (const file of buttonFiles) {
+        const filePath = path.join(buttonsPath, file);
+        const button = require(filePath);
+        
+        if ('customId' in button && 'execute' in button) {
+            client.buttons.set(button.customId, button);
+            console.log(`Buton yüklendi: ${button.customId}`);
+        } else {
+            console.log(`[UYARI] ${filePath} butonu "customId" veya "execute" özelliğine sahip değil.`);
+        }
+    }
+    console.log('Butonlar yüklendi.');
+} else {
+    console.log('src/buttons klasörü bulunamadı, butonlar yüklenmedi.');
+}
+
+// Event'leri yükle
+const eventsPath = path.join(__dirname, 'src/events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
 for (const file of eventFiles) {
-    const event = require(`./src/events/${file}`);
+    const filePath = path.join(eventsPath, file);
+    const event = require(filePath);
+    
     if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
+        client.once(event.name, (...args) => event.execute(...args));
     } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
+        client.on(event.name, (...args) => event.execute(...args));
     }
+    
     console.log(`Event yüklendi: ${event.name}`);
 }
 
-// AutoMod Olayları
-client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot) return;
-    
+// Bot başlangıç fonksiyonu
+async function startBot() {
     try {
-        // Küfür kontrolü
-        const hasProfanity = await client.automod.handleProfanityDetection(message);
-        if (hasProfanity) {
-            await client.automod.punishProfanity(message);
-            return;
-        }
+        // Veritabanını başlat
+        await database.initialize();
+        console.log('Veritabanı başarıyla başlatıldı!');
         
-        // Spam kontrolü
-        const isSpam = await client.automod.handleSpamDetection(message);
-        if (isSpam) {
-            await client.automod.punishSpam(message);
+        // Botu başlat
+        await client.login(process.env.TOKEN);
+    } catch (error) {
+        console.error('Bot başlatma hatası:', error);
+        process.exit(1);
+    }
+}
+
+// Bot hazır olduğunda
+client.once('ready', async () => {
+    console.log(`${client.user.tag} olarak giriş yapıldı!`);
+    
+    // Durum mesajını ayarla
+    client.user.setPresence({
+        activities: [{ name: 'fellas gururla sunar', type: ActivityType.Playing }],
+        status: 'online',
+    });
+    
+    // Tüm sunucuları veritabanında başlat
+    for (const guild of client.guilds.cache.values()) {
+        await database.guilds.setupGuild(guild.id);
+        console.log(`Guild hazırlandı: ${guild.name} (${guild.id})`);
+    }
+    
+    console.log(`${client.guilds.cache.size} sunucu veritabanında hazırlandı.`);
+});
+
+// Yeni sunucu eklendiğinde
+client.on('guildCreate', async (guild) => {
+    // Yeni sunucuyu veritabanına ekle
+    await database.guilds.setupGuild(guild.id);
+    console.log(`Yeni sunucu eklendi ve veritabanına kaydedildi: ${guild.name} (${guild.id})`);
+});
+
+// Slash komut işleyici
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+
+        if (!command) {
+            console.error(`${interaction.commandName} adlı komut bulunamadı.`);
             return;
         }
-    } catch (error) {
-        console.error('AutoMod MessageCreate olayında hata:', error);
-    }
-});
 
-client.on(Events.GuildMemberAdd, async (member) => {
-    try {
-        // Raid kontrolü
-        const isRaid = await client.automod.handleRaidDetection(member);
-        if (isRaid) {
-            await client.automod.punishRaid(member.guild);
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(`Komut çalıştırma hatası: ${error}`);
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: 'Komut çalıştırılırken bir hata oluştu!', ephemeral: true });
+            } else {
+                await interaction.reply({ content: 'Komut çalıştırılırken bir hata oluştu!', ephemeral: true });
+            }
         }
-    } catch (error) {
-        console.error('AutoMod GuildMemberAdd olayında hata:', error);
+    } else if (interaction.isButton()) {
+        const button = client.buttons.get(interaction.customId);
+        
+        if (!button) return;
+        
+        try {
+            await button.execute(interaction);
+        } catch (error) {
+            console.error(`Buton işleme hatası: ${error}`);
+            await interaction.reply({ content: 'Buton işlenirken bir hata oluştu!', ephemeral: true });
+        }
     }
 });
 
-// Hata yönetimi
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
-});
+// Botu başlat
+startBot();
 
-// Uygulama kapatılırken veritabanı bağlantılarını kapat
-process.on('SIGINT', () => {
-    console.log('Uygulama kapatılıyor...');
-    if (client.database) {
-        client.database.close();
+// Güvenli çıkış (veritabanı bağlantısını kapat)
+process.on('SIGINT', async () => {
+    console.log('Bot kapatılıyor...');
+    try {
+        await database.close();
+        console.log('Veritabanı bağlantısı güvenli bir şekilde kapatıldı.');
+    } catch (err) {
+        console.error('Veritabanı kapatma hatası:', err);
     }
     process.exit(0);
 });
 
-client.login(process.env.TOKEN);
+process.on('SIGTERM', async () => {
+    console.log('Bot kapatılıyor...');
+    try {
+        await database.close();
+        console.log('Veritabanı bağlantısı güvenli bir şekilde kapatıldı.');
+    } catch (err) {
+        console.error('Veritabanı kapatma hatası:', err);
+    }
+    process.exit(0);
+});
+
+// Yakalanmamış hataları raporla
+process.on('unhandledRejection', (error) => {
+    console.error('Yakalanmamış Promise Reddi:', error);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Yakalanmamış İstisna:', error);
+    // Kritik hatalar için botu güvenli bir şekilde kapatmayı düşünebilirsiniz
+    // process.exit(1);
+});

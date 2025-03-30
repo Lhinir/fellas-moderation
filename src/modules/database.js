@@ -1,195 +1,352 @@
-// database.js - Güncellenmiş Versiyon
-const SQLite = require('better-sqlite3');
-const fs = require('fs');
+// src/modules/database.js (genişletilmiş)
+
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
-class Database {
-  constructor() {
-    // Ana data klasörü oluştur (tüm veritabanları için tek klasör)
-    this.dataDir = path.join(__dirname, '../../data');
-    console.log(`Veri dizini: ${this.dataDir}`);
+// Veritabanı dosyası
+const dbFolder = path.join(process.cwd(), 'data');
+const dbFile = path.join(dbFolder, 'fellas.db');
 
-    // Veri dizinini oluştur
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-      console.log(`Veri dizini oluşturuldu: ${this.dataDir}`);
-    }
-
-    // Ana veritabanı dosyası
-    this.mainDbFile = path.join(this.dataDir, 'bot.db');
-    console.log(`Ana veritabanı: ${this.mainDbFile}`);
-
-    try {
-      // Ana veritabanına bağlan
-      this.db = new SQLite(this.mainDbFile);
-      console.log(`Ana veritabanına başarıyla bağlanıldı: ${this.mainDbFile}`);
-      
-      // WAL modunu ayarla
-      this.db.pragma('journal_mode = WAL');
-      
-      // Tabloları oluştur
-      this.setupTables();
-      
-      // Bağlantıyı test et
-      const test = this.db.prepare('SELECT 1 AS test').get();
-      if (test && test.test === 1) {
-        console.log('Ana veritabanı bağlantısı doğrulandı');
-      }
-    } catch (error) {
-      console.error('Veritabanı bağlantı hatası:', error);
-      
-      // Fallback olarak bellek içi veritabanı kullan
-      try {
-        this.db = new SQLite(':memory:');
-        console.log('Bellek içi veritabanı oluşturuldu');
-        this.setupTables();
-        console.warn('UYARI: Bellekte veritabanı kullanılıyor - tüm veriler yeniden başlatma ile kaybolacak!');
-      } catch (memErr) {
-        console.error('Bellek içi veritabanı oluşturma hatası:', memErr);
-        throw new Error('Veritabanı başlatılamadı');
-      }
-    }
-    
-    // AutoMod veritabanını da aynı dizinde oluştur
-    try {
-      this.automodDbFile = path.join(this.dataDir, 'automod.db');
-      this.automodDb = new SQLite(this.automodDbFile);
-      console.log(`AutoMod veritabanına başarıyla bağlanıldı: ${this.automodDbFile}`);
-      this.setupAutoModTables();
-    } catch (error) {
-      console.error('AutoMod veritabanı hatası:', error);
-      // Ana veritabanını kullan
-      this.automodDb = this.db;
-      this.setupAutoModTables();
-    }
-  }
-
-  // Ana tabloları oluştur
-  setupTables() {
-    try {
-      // Uyarılar tablosu
-      const createWarningsTable = this.db.prepare(`
-        CREATE TABLE IF NOT EXISTS warnings (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          guild_id TEXT NOT NULL,
-          reason TEXT,
-          moderator_id TEXT NOT NULL,
-          timestamp INTEGER NOT NULL
-        )
-      `);
-      createWarningsTable.run();
-      
-      // Sunucu ayarları tablosu
-      const createGuildConfigTable = this.db.prepare(`
-        CREATE TABLE IF NOT EXISTS guild_config (
-          guild_id TEXT PRIMARY KEY,
-          prefix TEXT DEFAULT '!',
-          welcome_channel_id TEXT,
-          log_channel_id TEXT,
-          mod_role_id TEXT,
-          auto_role_id TEXT,
-          created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-          updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-        )
-      `);
-      createGuildConfigTable.run();
-      
-      console.log('Ana veritabanı tabloları başarıyla oluşturuldu');
-    } catch (error) {
-      console.error('Ana tablo oluşturma hatası:', error);
-    }
-  }
-
-  // AutoMod tablolarını oluştur (daha önce automod.js içinde olan tabloları buraya taşıyoruz)
-// AutoMod tablolarını oluştur
-setupAutoModTables() {
-    try {
-      // Küfür listesi tablosu
-      this.automodDb.prepare(`CREATE TABLE IF NOT EXISTS profanity_words (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        word TEXT NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`).run();
-      
-      // Sunucu ayarları tablosu
-      this.automodDb.prepare(`CREATE TABLE IF NOT EXISTS guild_automod_settings (
-        guild_id TEXT PRIMARY KEY,
-        spam_protection BOOLEAN DEFAULT 0,
-        spam_threshold INTEGER DEFAULT 5,
-        spam_interval INTEGER DEFAULT 5000,
-        raid_protection BOOLEAN DEFAULT 0,
-        raid_threshold INTEGER DEFAULT 10,
-        raid_interval INTEGER DEFAULT 10000,
-        profanity_filter BOOLEAN DEFAULT 0,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`).run();
-      
-      console.log('AutoMod veritabanı tabloları başarıyla oluşturuldu');
-    } catch (error) {
-      console.error('AutoMod tabloları oluşturma hatası:', error);
-    }
-  }
-
-  // Sunucu ayarlarını getir (Logger.js için gerekli)
-  getGuildConfig(guildId) {
-    try {
-      const stmt = this.db.prepare('SELECT * FROM guild_config WHERE guild_id = ?');
-      return stmt.get(guildId);
-    } catch (error) {
-      console.error('Sunucu ayarları alınırken hata:', error);
-      return null;
-    }
-  }
-
-  // AutoMod için yardımcı metotlar
-  getAutoModDb() {
-    return this.automodDb;
-  }
-
-  // Genel sorgu metotları
-  run(sql, params = {}) {
-    try {
-      const stmt = this.db.prepare(sql);
-      return stmt.run(params);
-    } catch (error) {
-      console.error('Sorgu çalıştırma hatası:', error);
-      throw error;
-    }
-  }
-
-  get(sql, params = {}) {
-    try {
-      const stmt = this.db.prepare(sql);
-      return stmt.get(params);
-    } catch (error) {
-      console.error('Sorgu çalıştırma hatası:', error);
-      throw error;
-    }
-  }
-
-  all(sql, params = {}) {
-    try {
-      const stmt = this.db.prepare(sql);
-      return stmt.all(params);
-    } catch (error) {
-      console.error('Sorgu çalıştırma hatası:', error);
-      throw error;
-    }
-  }
-  
-  // Bağlantıyı doğru şekilde kapat
-  close() {
-    if (this.db) {
-      this.db.close();
-      console.log('Ana veritabanı bağlantısı kapatıldı');
-    }
-    
-    if (this.automodDb && this.automodDb !== this.db) {
-      this.automodDb.close();
-      console.log('AutoMod veritabanı bağlantısı kapatıldı');
-    }
-  }
+// Veritabanı klasörünün var olduğundan emin ol
+if (!fs.existsSync(dbFolder)) {
+    fs.mkdirSync(dbFolder, { recursive: true });
 }
 
-module.exports = Database;
+// Veritabanı bağlantısını oluştur
+const db = new sqlite3.Database(dbFile, (err) => {
+    if (err) {
+        console.error('Veritabanı bağlantı hatası:', err.message);
+    } else {
+        console.log('Veritabanına bağlanıldı.');
+    }
+});
+
+// Tabloları oluştur/güncelle
+function initializeDatabase() {
+    return new Promise((resolve, reject) => {
+        console.log('Veritabanı tabloları hazırlanıyor...');
+        
+        // Tablolar için SQL komutları
+        const tables = [
+            // Guild ayarları tablosu
+            `CREATE TABLE IF NOT EXISTS guild_settings (
+                guild_id TEXT PRIMARY KEY,
+                prefix TEXT DEFAULT '!',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            
+            // Log kanalları tablosu
+            `CREATE TABLE IF NOT EXISTS log_channels (
+                guild_id TEXT,
+                type TEXT,
+                channel_id TEXT,
+                PRIMARY KEY (guild_id, type),
+                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+            )`,
+            
+            // Uyarılar tablosu
+            `CREATE TABLE IF NOT EXISTS warnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                user_id TEXT,
+                moderator_id TEXT,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+            )`,
+            
+            // Moderasyon kayıtları tablosu (ban, kick, mute vb.)
+            `CREATE TABLE IF NOT EXISTS mod_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                user_id TEXT,
+                moderator_id TEXT,
+                action_type TEXT,
+                reason TEXT,
+                duration TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+            )`
+        ];
+        
+        // Sequential execution of table creation
+        db.serialize(() => {
+            db.run('PRAGMA foreign_keys = ON');
+            
+            const promises = tables.map(sql => {
+                return new Promise((res, rej) => {
+                    db.run(sql, (err) => {
+                        if (err) rej(err);
+                        else res();
+                    });
+                });
+            });
+            
+            Promise.all(promises)
+                .then(() => {
+                    console.log('Veritabanı tabloları hazır.');
+                    resolve();
+                })
+                .catch(err => {
+                    console.error('Tablo oluşturma hatası:', err);
+                    reject(err);
+                });
+        });
+    });
+}
+
+// Promisify run
+function run(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function (err) {
+            if (err) {
+                console.error('SQL Error:', err);
+                reject(err);
+            } else {
+                resolve({ lastID: this.lastID, changes: this.changes });
+            }
+        });
+    });
+}
+
+// Promisify get
+function get(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) {
+                console.error('SQL Error:', err);
+                reject(err);
+            } else {
+                resolve(row);
+            }
+        });
+    });
+}
+
+// Promisify all
+function all(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error('SQL Error:', err);
+                reject(err);
+            } else {
+                resolve(rows);
+            }
+        });
+    });
+}
+
+// Log kanalları işlemleri
+const logs = {
+    // Log kanalı ayarla
+    setLogChannel: async (guildId, type, channelId) => {
+        // Önce guild_settings tablosunda guild_id'nin var olduğundan emin ol
+        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
+        // Log kanalını ayarla
+        return run(
+            'INSERT OR REPLACE INTO log_channels (guild_id, type, channel_id) VALUES (?, ?, ?)',
+            [guildId, type, channelId]
+        );
+    },
+    
+    // Log kanalını getir
+    getLogChannel: async (guildId, type) => {
+        const row = await get(
+            'SELECT channel_id FROM log_channels WHERE guild_id = ? AND type = ?',
+            [guildId, type]
+        );
+        return row ? row.channel_id : null;
+    },
+    
+    // Tüm log kanallarını getir
+    getAllLogChannels: async (guildId) => {
+        return all(
+            'SELECT type, channel_id FROM log_channels WHERE guild_id = ?',
+            [guildId]
+        );
+    },
+    
+    // Log kanalı ayarını sil
+    deleteLogChannel: async (guildId, type) => {
+        return run(
+            'DELETE FROM log_channels WHERE guild_id = ? AND type = ?',
+            [guildId, type]
+        );
+    }
+};
+
+// Guild ayarları işlemleri
+const guilds = {
+    // Guild'i oluştur/kontrol et
+    setupGuild: async (guildId) => {
+        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
+        return { guildId };
+    },
+    
+    // Prefix ayarla
+    setPrefix: async (guildId, prefix) => {
+        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
+        return run(
+            'UPDATE guild_settings SET prefix = ? WHERE guild_id = ?',
+            [prefix, guildId]
+        );
+    },
+    
+    // Prefix getir
+    getPrefix: async (guildId) => {
+        const row = await get(
+            'SELECT prefix FROM guild_settings WHERE guild_id = ?',
+            [guildId]
+        );
+        return row ? row.prefix : '!';
+    },
+    
+    // Guild'i sil
+    deleteGuild: async (guildId) => {
+        return run('DELETE FROM guild_settings WHERE guild_id = ?', [guildId]);
+    },
+    
+    // Tüm guild'leri getir
+    getAllGuilds: async () => {
+        return all('SELECT * FROM guild_settings');
+    }
+};
+
+// Uyarı işlemleri
+const warnings = {
+    // Uyarı ekle
+    addWarning: async (guildId, userId, moderatorId, reason) => {
+        await guilds.setupGuild(guildId);
+        const result = await run(
+            'INSERT INTO warnings (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)',
+            [guildId, userId, moderatorId, reason]
+        );
+        return result.lastID;
+    },
+    
+    // Uyarıları getir
+    getWarnings: async (guildId, userId) => {
+        return all(
+            'SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC',
+            [guildId, userId]
+        );
+    },
+    
+    // Uyarı sayısını getir
+    getWarningCount: async (guildId, userId) => {
+        const row = await get(
+            'SELECT COUNT(*) as count FROM warnings WHERE guild_id = ? AND user_id = ?',
+            [guildId, userId]
+        );
+        return row ? row.count : 0;
+    },
+    
+    // Belirli bir uyarıyı sil
+    deleteWarning: async (warningId, guildId) => {
+        return run(
+            'DELETE FROM warnings WHERE id = ? AND guild_id = ?',
+            [warningId, guildId]
+        );
+    },
+    
+    // Kullanıcının tüm uyarılarını temizle
+    clearWarnings: async (guildId, userId) => {
+        return run(
+            'DELETE FROM warnings WHERE guild_id = ? AND user_id = ?',
+            [guildId, userId]
+        );
+    }
+};
+
+// Moderasyon kaydı işlemleri
+const modActions = {
+    // Moderasyon kaydı ekle (ban, kick, mute vb.)
+    addAction: async (guildId, userId, moderatorId, actionType, reason, duration = null) => {
+        await guilds.setupGuild(guildId);
+        const result = await run(
+            'INSERT INTO mod_actions (guild_id, user_id, moderator_id, action_type, reason, duration) VALUES (?, ?, ?, ?, ?, ?)',
+            [guildId, userId, moderatorId, actionType, reason, duration]
+        );
+        return result.lastID;
+    },
+    
+    // Kullanıcının moderasyon kayıtlarını getir
+    getUserActions: async (guildId, userId) => {
+        return all(
+            'SELECT * FROM mod_actions WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC',
+            [guildId, userId]
+        );
+    },
+    
+    // Belirli türdeki moderasyon kayıtlarını getir
+    getActionsByType: async (guildId, actionType) => {
+        return all(
+            'SELECT * FROM mod_actions WHERE guild_id = ? AND action_type = ? ORDER BY created_at DESC',
+            [guildId, actionType]
+        );
+    },
+    
+    // Belirli moderatörün işlemlerini getir
+    getModeratorActions: async (guildId, moderatorId) => {
+        return all(
+            'SELECT * FROM mod_actions WHERE guild_id = ? AND moderator_id = ? ORDER BY created_at DESC',
+            [guildId, moderatorId]
+        );
+    }
+};
+
+// Helper functions
+const utils = {
+    // SQLite LIKE için karakterleri escape et
+    escapeLike: (str) => str.replace(/[%_]/g, char => `\\${char}`),
+    
+    // Veritabanından verileri yedekle
+    backupDatabase: async () => {
+        const backupPath = path.join(dbFolder, `backup_${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+        return new Promise((resolve, reject) => {
+            const backup = fs.createWriteStream(backupPath);
+            const source = fs.createReadStream(dbFile);
+            
+            source.pipe(backup);
+            source.on('end', () => {
+                console.log(`Veritabanı ${backupPath} adresine yedeklendi.`);
+                resolve(backupPath);
+            });
+            source.on('error', (err) => {
+                console.error('Yedekleme hatası:', err);
+                reject(err);
+            });
+        });
+    }
+};
+
+// Module exports
+module.exports = {
+    db,
+    initialize: initializeDatabase,
+    run,
+    get,
+    all,
+    logs,
+    guilds,
+    warnings,
+    modActions,
+    utils,
+    
+    // Close database connection
+    close: () => {
+        return new Promise((resolve, reject) => {
+            db.close((err) => {
+                if (err) {
+                    console.error('Veritabanını kapatma hatası:', err.message);
+                    reject(err);
+                } else {
+                    console.log('Veritabanı bağlantısı kapatıldı.');
+                    resolve();
+                }
+            });
+        });
+    }
+};

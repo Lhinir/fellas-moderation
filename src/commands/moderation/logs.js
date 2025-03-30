@@ -1,151 +1,101 @@
-// src/commands/moderation/logs.js
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+// src/commands/moderation/logs.js - Zamanaşımı düzeltmesi
+
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('logs')
-        .setDescription('Log ayarlarını yönetir')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .setDescription('Log kanallarını ayarla')
         .addSubcommand(subcommand =>
             subcommand
-                .setName('setup')
-                .setDescription('Log kanalını ayarlar')
+                .setName('set')
+                .setDescription('Bir log kanalı ayarla')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Log türü')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Moderasyon', value: 'moderation' },
+                            { name: 'Sunucu', value: 'server' },
+                            { name: 'Mesaj', value: 'message' },
+                            { name: 'Üye', value: 'member' }
+                        ))
                 .addChannelOption(option =>
                     option.setName('channel')
-                        .setDescription('Logların gönderileceği kanal')
+                        .setDescription('Log kanalı')
                         .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('view')
-                .setDescription('Mevcut log ayarlarını gösterir')),
-    
+                .setDescription('Ayarlı log kanallarını görüntüle'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('delete')
+                .setDescription('Bir log kanalı ayarını sil')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Log türü')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Moderasyon', value: 'moderation' },
+                            { name: 'Sunucu', value: 'server' },
+                            { name: 'Mesaj', value: 'message' },
+                            { name: 'Üye', value: 'member' }
+                        )))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
     async execute(interaction) {
-        const client = interaction.client;
-        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag değeri        
-        const subcommand = interaction.options.getSubcommand();
+        // Hemen yanıtı ertele (3 saniyelik zaman aşımını önle)
+        await interaction.deferReply({ ephemeral: true });
         
         try {
-            switch (subcommand) {
-                case 'setup':
-                    await setupLogChannel(interaction, client);
-                    break;
-                    
-                case 'view':
-                    await viewLogSettings(interaction, client);
-                    break;
+            const subcommand = interaction.options.getSubcommand();
+            
+            if (subcommand === 'set') {
+                const type = interaction.options.getString('type');
+                const channel = interaction.options.getChannel('channel');
+                
+                // SQLite'a log kanalını kaydet
+                await database.logs.setLogChannel(interaction.guild.id, type, channel.id);
+                
+                await interaction.editReply({
+                    content: `**${type}** log kanalı <#${channel.id}> olarak ayarlandı.`
+                });
+            }
+            else if (subcommand === 'view') {
+                // Tüm log kanallarını al
+                const logChannels = await database.logs.getAllLogChannels(interaction.guild.id);
+                
+                if (!logChannels || logChannels.length === 0) {
+                    return interaction.editReply({
+                        content: 'Bu sunucuda hiç log kanalı ayarlanmamış.'
+                    });
+                }
+                
+                const channelList = logChannels.map(log => {
+                    return `**${log.type}**: <#${log.channel_id}>`;
+                }).join('\n');
+                
+                await interaction.editReply({
+                    content: `**Ayarlı Log Kanalları**\n${channelList}`
+                });
+            }
+            else if (subcommand === 'delete') {
+                const type = interaction.options.getString('type');
+                
+                // Log kanalı ayarını sil
+                await database.logs.deleteLogChannel(interaction.guild.id, type);
+                
+                await interaction.editReply({
+                    content: `**${type}** log kanalı ayarı başarıyla silindi.`
+                });
             }
         } catch (error) {
-            console.error(`Logs komutunda hata: ${error}`);
-            await interaction.editReply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu. Lütfen daha sonra tekrar deneyin.'
-            });
+            console.error('Log kanalı yönetim hatası:', error);
+            await interaction.editReply({
+                content: 'Log kanalı ayarları yönetilirken bir hata oluştu.'
+            }).catch(err => console.error('Hata mesajı gönderirken hata:', err));
         }
     }
 };
-
-async function setupLogChannel(interaction, client) {
-    try {
-        const channel = interaction.options.getChannel('channel');
-        
-        // Kanal türünü kontrol et
-        if (channel.type !== 0) { // 0 = TextChannel
-            return await interaction.editReply({ 
-                content: 'Lütfen bir metin kanalı seçin.'
-            });
-        }
-        
-        console.log(`Log kanalı ayarlanıyor: ${channel.name} (${channel.id})`);
-        
-        // Botun kanala mesaj gönderme yetkisini kontrol et
-        const permissions = channel.permissionsFor(interaction.guild.members.me);
-        if (!permissions.has(PermissionFlagsBits.SendMessages) || 
-            !permissions.has(PermissionFlagsBits.EmbedLinks)) {
-            
-            return await interaction.editReply({ 
-                content: 'Bot seçilen kanalda mesaj gönderme veya embed gönderme yetkisine sahip değil.'
-            });
-        }
-        
-        console.log('Bot kanalda gerekli izinlere sahip, veritabanı güncelleniyor...');
-        
-        // DOĞRU GÜNCELLEME: Doğrudan SQL kullan
-        const result = await client.database.run(
-            'INSERT OR REPLACE INTO guild_config (guild_id, log_channel_id, updated_at) VALUES (?, ?, ?)',
-            [interaction.guild.id, channel.id, Math.floor(Date.now() / 1000)]
-        );
-        
-        console.log('Veritabanı güncellendi, test log mesajı gönderiliyor...');
-        
-        // Doğrudan test mesajı gönder
-        const testEmbed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setTitle('✅ Log Sistemi Test Mesajı')
-            .setDescription('Log sistemi başarıyla yapılandırıldı!')
-            .addFields(
-                { name: 'Yapılandıran', value: `${interaction.user.tag}` },
-                { name: 'Tarih', value: new Date().toLocaleString('tr-TR') }
-            )
-            .setTimestamp();
-            
-        await channel.send({ embeds: [testEmbed] })
-            .then(() => console.log('Direkt test mesajı gönderildi'))
-            .catch(e => console.error('Direkt test mesajı hatası:', e));
-        
-        // Logger ile log göndermeyi dene
-        console.log('Logger.log çağrılıyor...');
-        await client.logger.log(interaction.guild.id, 'system', {
-            description: 'Log sistemi kurulumu tamamlandı',
-            user: {
-                id: interaction.user.id,
-                tag: interaction.user.tag
-            },
-            channel: {
-                id: channel.id,
-                name: channel.name
-            }
-        });
-        
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('✅ Log Kanalı Ayarlandı')
-            .setDescription(`Log kanalı ${channel} olarak ayarlandı. Test log mesajı kanala gönderildi.`)
-            .setTimestamp();
-            
-        await interaction.editReply({ embeds: [embed] });
-        
-    } catch (error) {
-        console.error('setupLogChannel fonksiyonunda hata:', error);
-        await interaction.editReply({ 
-            content: `Log kanalı ayarlanırken bir hata oluştu: ${error.message}`
-        });
-    }
-}
-
-async function viewLogSettings(interaction, client) {
-    const guildConfig = await client.database.getGuildConfig(interaction.guild.id);
-    
-    let logChannelInfo = '❌ Ayarlanmamış';
-    
-    if (guildConfig.log_channel_id) {
-        const channel = interaction.guild.channels.cache.get(guildConfig.log_channel_id);
-        logChannelInfo = channel ? `✅ <#${channel.id}>` : '❓ Kanal bulunamadı';
-    }
-    
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle('📋 Log Ayarları')
-        .addFields(
-            { name: '📢 Log Kanalı', value: logChannelInfo }
-        )
-        .setFooter({ text: 'Log kanalını ayarlamak için /logs setup komutunu kullanın' })
-        .setTimestamp();
-        
-    await interaction.editReply({ embeds: [embed] });
-
-    client.database.run(`
-        ALTER TABLE guild_config 
-        RENAME COLUMN logChannelId TO log_channel_id;
-    `).catch(() => {
-        console.log('Sütun zaten log_channel_id olarak adlandırılmış');
-    });
-}
