@@ -6,7 +6,7 @@ const database = require('../../modules/database');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('ban')
-        .setDescription('Bir kullanıcıyı yasaklar')
+        .setDescription('Belirtilen kullanıcıyı sunucudan yasaklar')
         .addUserOption(option => 
             option.setName('user')
                 .setDescription('Yasaklanacak kullanıcı')
@@ -28,8 +28,8 @@ module.exports = {
             // Yetkiyi kontrol et
             if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) {
                 return interaction.reply({ 
-                    content: 'Bu komutu kullanmak için **Üyeleri Yasakla** yetkisine sahip olmalısın!', 
-                    ephemeral: true 
+                    content: 'Bu komutu kullanmak için **Üyeleri Yasakla** yetkisine sahip olmalısın!',
+                    ephemeral: true
                 });
             }
 
@@ -37,50 +37,73 @@ module.exports = {
             const reason = interaction.options.getString('reason') || 'Sebep belirtilmedi';
             const days = interaction.options.getInteger('days') || 0;
             
-            // Hedef kullanıcıyı kontrol et
+            // Kullanıcıyı kontrol et
             const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
+            
+            // Kendisini banlayamasın
+            if (user.id === interaction.user.id) {
+                return interaction.reply({
+                    content: 'Kendinizi banlayamazsınız!',
+                    ephemeral: true
+                });
+            }
+            
+            // Botu banlayamasın
+            if (user.id === interaction.client.user.id) {
+                return interaction.reply({
+                    content: 'Beni banlayamazsın!',
+                    ephemeral: true
+                });
+            }
             
             if (targetMember) {
                 // Hedef banlanabilir mi kontrol et
                 if (!targetMember.bannable) {
                     return interaction.reply({ 
-                        content: 'Bu kullanıcıyı yasaklama yetkim yok veya kullanıcı benden daha yüksek bir role sahip.', 
-                        ephemeral: true 
+                        content: 'Bu kullanıcıyı yasaklama yetkim yok veya kullanıcı benden daha yüksek bir role sahip.',
+                        ephemeral: true
                     });
                 }
 
-                // Yetkili kendisini veya kendisinden üst rütbeyi banlayamaz
+                // Yetkili kendisinden üst rütbeyi banlayamasın
                 if (interaction.member.id !== interaction.guild.ownerId) {
                     const executorHighestRole = interaction.member.roles.highest.position;
                     const targetHighestRole = targetMember.roles.highest.position;
                     
                     if (executorHighestRole <= targetHighestRole) {
                         return interaction.reply({ 
-                            content: 'Kendinizi veya sizden yüksek/eşit roldeki kullanıcıları yasaklayamazsınız.', 
-                            ephemeral: true 
+                            content: 'Kendinizle aynı veya daha yüksek role sahip kullanıcıları yasaklayamazsınız.',
+                            ephemeral: true
                         });
                     }
                 }
             }
             
             // Kullanıcıyı yasakla
-            await interaction.guild.members.ban(user.id, { reason: reason, deleteMessageDays: days });
+            await interaction.guild.members.ban(user.id, { 
+                reason: `${interaction.user.tag} tarafından banlandı: ${reason}`, 
+                deleteMessageDays: days 
+            });
             
             // Başarılı yanıt
             await interaction.reply({ 
-                content: `**${user.tag}** başarıyla yasaklandı. Sebep: ${reason}`, 
-                ephemeral: true 
+                content: `**${user.tag}** başarıyla yasaklandı.\n**Sebep:** ${reason}`,
+                ephemeral: false
             });
             
-            // Veritabanına kaydet
-            await database.modActions.addAction(
-                interaction.guild.id,
-                user.id,
-                interaction.user.id,
-                'ban',
-                reason,
-                null // Süresiz
-            );
+            // Veritabanına işlemi kaydet (modActions tablosu varsa)
+            try {
+                await database.modActions.addAction(
+                    interaction.guild.id,
+                    user.id,
+                    interaction.user.id,
+                    'ban',
+                    reason,
+                    null
+                );
+            } catch (dbError) {
+                console.error('Ban işlemi veritabanına kaydedilemedi:', dbError);
+            }
             
             // Log gönder
             await sendBanLogEmbed(interaction, user, reason, days);
@@ -88,9 +111,9 @@ module.exports = {
         } catch (error) {
             console.error('Ban komutu hatası:', error);
             await interaction.reply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu!', 
-                ephemeral: true 
-            });
+                content: 'Komut çalıştırılırken bir hata oluştu!',
+                ephemeral: true
+            }).catch(console.error);
         }
     }
 };
@@ -98,22 +121,14 @@ module.exports = {
 // Log mesajı gönderen yardımcı fonksiyon
 async function sendBanLogEmbed(interaction, targetUser, reason, days) {
     try {
-        const guild = interaction.guild;
+        // Log kanalını al
+        const logChannelId = await database.logs.getLogChannel(interaction.guild.id, 'moderation')
+            .catch(() => null);
         
-        // SQLite'dan log kanalını al
-        const logChannelId = await database.logs.getLogChannel(guild.id, 'moderation');
+        if (!logChannelId) return;
         
-        if (!logChannelId) {
-            console.log('Bu sunucu için moderasyon log kanalı ayarlanmamış.');
-            return;
-        }
-        
-        // Log kanalını bul
-        const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
-        if (!logChannel) {
-            console.error('Moderasyon log kanalı bulunamadı! ID:', logChannelId);
-            return;
-        }
+        const logChannel = await interaction.guild.channels.fetch(logChannelId).catch(() => null);
+        if (!logChannel) return;
 
         // Embed log mesajı oluştur
         const logEmbed = new EmbedBuilder()
@@ -121,8 +136,8 @@ async function sendBanLogEmbed(interaction, targetUser, reason, days) {
             .setTitle('🔨 Kullanıcı Yasaklandı')
             .setThumbnail(targetUser.displayAvatarURL())
             .addFields(
-                { name: 'Kullanıcı', value: `<@${targetUser.id}> (${targetUser.tag})`, inline: true },
-                { name: 'Moderatör', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+                { name: 'Kullanıcı', value: `${targetUser.tag} (${targetUser.id})`, inline: true },
+                { name: 'Moderatör', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
                 { name: 'Sebep', value: reason || 'Belirtilmedi', inline: false },
                 { name: 'Silinen Mesaj Günü', value: `${days} gün`, inline: true },
                 { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
@@ -131,7 +146,7 @@ async function sendBanLogEmbed(interaction, targetUser, reason, days) {
             .setTimestamp();
 
         // Logu gönder
-        await logChannel.send({ embeds: [logEmbed] });
+        await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
     } catch (error) {
         console.error('Ban log gönderme hatası:', error);
     }

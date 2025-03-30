@@ -1,19 +1,24 @@
-// src/commands/moderation/warn.js
+// src/commands/moderation/timeout.js
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
+const ms = require('ms');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('warn')
-        .setDescription('Bir kullanıcıyı uyarır')
+        .setName('timeout')
+        .setDescription('Bir kullanıcıyı belirli bir süre için susturur')
         .addUserOption(option => 
             option.setName('user')
-                .setDescription('Uyarılacak kullanıcı')
+                .setDescription('Susturulacak kullanıcı')
+                .setRequired(true))
+        .addStringOption(option => 
+            option.setName('duration')
+                .setDescription('Susturma süresi (1s, 1m, 1h, 1d)')
                 .setRequired(true))
         .addStringOption(option => 
             option.setName('reason')
-                .setDescription('Uyarı sebebi')
+                .setDescription('Susturma sebebi')
                 .setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
     
@@ -28,7 +33,28 @@ module.exports = {
             }
 
             const user = interaction.options.getUser('user');
+            const durationString = interaction.options.getString('duration');
             const reason = interaction.options.getString('reason') || 'Sebep belirtilmedi';
+            
+            // Süreyi milisaniyeye çevir
+            let duration;
+            try {
+                duration = ms(durationString);
+                if (!duration) throw new Error('Geçersiz süre formatı');
+                
+                // Discord API limiti - maksimum 28 gün
+                if (duration > 28 * 24 * 60 * 60 * 1000) {
+                    return interaction.reply({ 
+                        content: 'Maksimum susturma süresi 28 gündür.',
+                        ephemeral: true
+                    });
+                }
+            } catch (error) {
+                return interaction.reply({ 
+                    content: 'Geçersiz süre formatı! Örnek: 1s, 1m, 1h, 1d',
+                    ephemeral: true
+                });
+            }
             
             // Kullanıcıyı kontrol et
             const targetMember = await interaction.guild.members.fetch(user.id).catch(() => null);
@@ -40,87 +66,74 @@ module.exports = {
                 });
             }
             
-            // Kendini uyaramasın
+            // Kendisini timeoutlayamasın
             if (user.id === interaction.user.id) {
                 return interaction.reply({
-                    content: 'Kendinizi uyaramazsınız!',
+                    content: 'Kendinizi susturamzsınız!',
                     ephemeral: true
                 });
             }
             
-            // Botu uyaramasın
+            // Botu timeoutlayamasın
             if (user.id === interaction.client.user.id) {
                 return interaction.reply({
-                    content: 'Beni uyaramazsın!',
+                    content: 'Beni susturamazsın!',
                     ephemeral: true
                 });
             }
             
-            // Yetkili kendisinden üst rütbeyi uyaramasın
+            // Hedef timeoutlanabilir mi kontrol et
+            if (!targetMember.moderatable) {
+                return interaction.reply({ 
+                    content: 'Bu kullanıcıyı susturma yetkim yok veya kullanıcı benden daha yüksek bir role sahip.',
+                    ephemeral: true
+                });
+            }
+
+            // Yetkili kendisinden üst rütbeyi timeoutlayamasın
             if (interaction.member.id !== interaction.guild.ownerId) {
                 const executorHighestRole = interaction.member.roles.highest.position;
                 const targetHighestRole = targetMember.roles.highest.position;
                 
                 if (executorHighestRole <= targetHighestRole) {
                     return interaction.reply({ 
-                        content: 'Kendinizle aynı veya daha yüksek role sahip kullanıcıları uyaramazsınız.',
+                        content: 'Kendinizle aynı veya daha yüksek role sahip kullanıcıları susturamazsınız.',
                         ephemeral: true
                     });
                 }
             }
             
-            // Veritabanında uyarı oluştur
-            let warnId;
-            try {
-                warnId = await database.warnings.addWarning(
-                    interaction.guild.id,
-                    user.id,
-                    interaction.user.id,
-                    reason
-                );
-            } catch (dbError) {
-                console.error('Uyarı veritabanına kaydedilemedi:', dbError);
-                return interaction.reply({
-                    content: 'Uyarı kaydedilemedi! Lütfen daha sonra tekrar deneyin.',
-                    ephemeral: true
-                });
-            }
+            // Okunabilir süre formatı
+            const humanReadableDuration = formatDuration(duration);
             
-            // Uyarı sayısını al
-            const warnings = await database.warnings.getWarnings(interaction.guild.id, user.id);
-            const warningCount = warnings ? warnings.length : 1;
+            // Kullanıcıyı sustur
+            await targetMember.timeout(duration, `${interaction.user.tag} tarafından susturuldu: ${reason}`);
             
             // Başarılı yanıt
             await interaction.reply({ 
-                content: `**${user.tag}** uyarıldı (${warningCount}. uyarı).\n**Sebep:** ${reason}`,
+                content: `**${user.tag}** ${humanReadableDuration} süreyle susturuldu.\n**Sebep:** ${reason}`,
                 ephemeral: false
             });
             
-            // Kullanıcıya DM göndermeyi dene
+            // Veritabanına işlemi kaydet
             try {
-                const warnEmbed = new EmbedBuilder()
-                    .setColor('#ffcc00')
-                    .setTitle(`${interaction.guild.name} Sunucusunda Uyarıldınız`)
-                    .setDescription(`Bir moderatör tarafından uyarıldınız.`)
-                    .addFields(
-                        { name: 'Sebep', value: reason, inline: false },
-                        { name: 'Moderatör', value: interaction.user.tag, inline: true },
-                        { name: 'Uyarı Sayınız', value: `${warningCount}`, inline: true }
-                    )
-                    .setTimestamp();
-                
-                await user.send({ embeds: [warnEmbed] }).catch(() => {
-                    console.log(`${user.tag} kullanıcısına DM gönderilemedi.`);
-                });
-            } catch (dmError) {
-                console.error('DM gönderme hatası:', dmError);
+                await database.modActions.addAction(
+                    interaction.guild.id,
+                    user.id,
+                    interaction.user.id,
+                    'timeout',
+                    reason,
+                    durationString
+                );
+            } catch (dbError) {
+                console.error('Timeout işlemi veritabanına kaydedilemedi:', dbError);
             }
             
             // Log gönder
-            await sendWarnLogEmbed(interaction, user, reason, warningCount, warnId);
+            await sendTimeoutLogEmbed(interaction, user, reason, humanReadableDuration);
 
         } catch (error) {
-            console.error('Warn komutu hatası:', error);
+            console.error('Timeout komutu hatası:', error);
             await interaction.reply({ 
                 content: 'Komut çalıştırılırken bir hata oluştu!',
                 ephemeral: true
@@ -129,8 +142,24 @@ module.exports = {
     }
 };
 
+// Süreyi insan tarafından okunabilir formata çevirir
+function formatDuration(ms) {
+    const seconds = Math.floor((ms / 1000) % 60);
+    const minutes = Math.floor((ms / (1000 * 60)) % 60);
+    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    
+    const parts = [];
+    if (days > 0) parts.push(`${days} gün`);
+    if (hours > 0) parts.push(`${hours} saat`);
+    if (minutes > 0) parts.push(`${minutes} dakika`);
+    if (seconds > 0) parts.push(`${seconds} saniye`);
+    
+    return parts.join(' ');
+}
+
 // Log mesajı gönderen yardımcı fonksiyon
-async function sendWarnLogEmbed(interaction, targetUser, reason, warningCount, warnId) {
+async function sendTimeoutLogEmbed(interaction, targetUser, reason, duration) {
     try {
         // Log kanalını al
         const logChannelId = await database.logs.getLogChannel(interaction.guild.id, 'moderation')
@@ -143,15 +172,14 @@ async function sendWarnLogEmbed(interaction, targetUser, reason, warningCount, w
 
         // Embed log mesajı oluştur
         const logEmbed = new EmbedBuilder()
-            .setColor('#ffcc00') // Sarı
-            .setTitle('⚠️ Kullanıcı Uyarıldı')
+            .setColor('#ffbb00') // Amber
+            .setTitle('🔇 Kullanıcı Susturuldu')
             .setThumbnail(targetUser.displayAvatarURL())
             .addFields(
                 { name: 'Kullanıcı', value: `${targetUser.tag} (${targetUser.id})`, inline: true },
                 { name: 'Moderatör', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
                 { name: 'Sebep', value: reason || 'Belirtilmedi', inline: false },
-                { name: 'Uyarı ID', value: `#${warnId}`, inline: true },
-                { name: 'Toplam Uyarı', value: `${warningCount}`, inline: true },
+                { name: 'Süre', value: duration, inline: true },
                 { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
             )
             .setFooter({ text: `Kullanıcı ID: ${targetUser.id}` })
@@ -160,6 +188,6 @@ async function sendWarnLogEmbed(interaction, targetUser, reason, warningCount, w
         // Logu gönder
         await logChannel.send({ embeds: [logEmbed] }).catch(console.error);
     } catch (error) {
-        console.error('Warn log gönderme hatası:', error);
+        console.error('Timeout log gönderme hatası:', error);
     }
 }
