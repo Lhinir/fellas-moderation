@@ -1,4 +1,4 @@
-// src/events/autoModHandler.js - Kademeli ceza sistemi ile güncellendi
+// src/events/autoModHandler.js - Spam mesajlarını silme sisteminde "ilk mesaj" sorunu çözüldü
 
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const database = require('../modules/database');
@@ -111,28 +111,29 @@ module.exports = {
                 // Kullanıcının mesaj sayacını al veya oluştur
                 if (!userMessageCounts.has(userId)) {
                     userMessageCounts.set(userId, {
-                        count: 0,
-                        firstMessage: now,
                         messages: []
                     });
                 }
                 
                 const userData = userMessageCounts.get(userId);
                 
+                // ÖNEMLİ DEĞİŞİKLİK: Önce mesaj kontrolünü yap sonra mesajı ekle
                 // Zamanlama penceresi dışındaki mesajları temizle
                 userData.messages = userData.messages.filter(
-                    timestamp => now - timestamp < config.spam_interval
+                    msg => now - msg.timestamp < config.spam_interval
                 );
                 
-                // Yeni mesajı ekle
-                userData.messages.push(now);
-                
-                // Eğer kullanıcı belirtilen süre içinde threshold'dan fazla mesaj attıysa
-                if (userData.messages.length >= config.spam_threshold) {
-                    // Map'ten kullanıcıyı temizle
-                    userMessageCounts.delete(userId);
-                    
+                // Mesaj sayısını kontrol et (mevcut mesajı EKLEMEDEN ÖNCE)
+                // Eşik - 1 değerine ulaşıldığında tetikle, böylece bu mesaj da silinsin
+                if (userData.messages.length >= (config.spam_threshold - 1)) {
                     try {
+                        // Yeni mesajı ekle (silmek için)
+                        userData.messages.push({
+                            timestamp: now,
+                            messageId: message.id,
+                            channelId: message.channel.id
+                        });
+                        
                         // Bot yetkisini kontrol et
                         if (!message.guild.members.me.permissions.has(PermissionFlagsBits.ModerateMembers)) {
                             console.log('Bot, kullanıcıları susturmak için gerekli yetkiye sahip değil!');
@@ -168,6 +169,42 @@ module.exports = {
                         // Ceza süresini belirle
                         const timeoutDuration = TIMEOUT_LEVELS[spamCount];
                         
+                        // SPAM MESAJLARINI SİL
+                        const messagesToDelete = [...userData.messages]; // Kopyasını al
+                        let deletedCount = 0;
+                        
+                        // Spam mesajlarını kanal bazında topla
+                        const messagesByChannel = {};
+                        
+                        for (const msg of messagesToDelete) {
+                            if (!messagesByChannel[msg.channelId]) {
+                                messagesByChannel[msg.channelId] = [];
+                            }
+                            messagesByChannel[msg.channelId].push(msg.messageId);
+                        }
+                        
+                        // Her kanal için toplu mesaj silme işlemi yap
+                        for (const [channelId, messageIds] of Object.entries(messagesByChannel)) {
+                            try {
+                                const channel = await message.guild.channels.fetch(channelId);
+                                if (!channel) continue;
+                                
+                                // Mesajları toplu sil
+                                await channel.bulkDelete(messageIds)
+                                    .then(deleted => {
+                                        deletedCount += deleted.size;
+                                    })
+                                    .catch(error => {
+                                        console.error(`Kanal ${channelId}'de mesaj silme hatası:`, error);
+                                    });
+                            } catch (channelError) {
+                                console.error(`Kanal erişim hatası (${channelId}):`, channelError);
+                            }
+                        }
+                        
+                        // Map'ten kullanıcıyı temizle (spam mesajları silindiği için)
+                        userMessageCounts.delete(userId);
+                        
                         // Kullanıcıyı sustur
                         const member = await message.guild.members.fetch(userId);
                         await member.timeout(timeoutDuration, `AutoMod: Spam yapma (${spamCount}. ihlal)`);
@@ -196,7 +233,8 @@ module.exports = {
                                 { name: 'Kullanıcı', value: `${message.author.tag} (${message.author.id})`, inline: true },
                                 { name: 'Kanal', value: `<#${message.channel.id}>`, inline: true },
                                 { name: 'Süre', value: `${timeoutDuration / 60000} dakika`, inline: true },
-                                { name: 'İhlal Sayısı', value: `${spamCount}`, inline: true }
+                                { name: 'İhlal Sayısı', value: `${spamCount}`, inline: true },
+                                { name: 'Silinen Mesajlar', value: `${deletedCount}`, inline: true }
                             )
                             .setTimestamp()
                             .setFooter({ text: 'AutoMod Spam Koruması' });
@@ -216,15 +254,24 @@ module.exports = {
                             message.author, 
                             timeoutDuration, 
                             spamCount, 
-                            message.channel
+                            message.channel,
+                            deletedCount
                         );
                         
-                        console.log(`AutoMod: ${message.author.tag} spam yaptığı için ${timeoutDuration / 60000} dakika susturuldu (${spamCount}. ihlal).`);
+                        console.log(`AutoMod: ${message.author.tag} spam yaptığı için ${timeoutDuration / 60000} dakika susturuldu ve ${deletedCount} mesajı silindi (${spamCount}. ihlal).`);
                         
+                        return; // İşlem tamamlandı, geri dön
                     } catch (timeoutError) {
                         console.error('Kullanıcı susturma hatası:', timeoutError);
                     }
                 }
+                
+                // Spam tespit edilmediyse, mesajı listeye ekle
+                userData.messages.push({
+                    timestamp: now,
+                    messageId: message.id,
+                    channelId: message.channel.id
+                });
             }
             
         } catch (error) {
@@ -234,55 +281,41 @@ module.exports = {
 };
 
 // Log kanalına spam bildirimi gönder
-async function logSpamTimeout(guild, user, duration, spamCount, channel) {
+async function logSpamTimeout(guild, user, duration, spamCount, channel, deletedCount) {
     try {
         // Log kanalı ID'sini al
-        const config = await database.get(
-            'SELECT * FROM automod_configs WHERE guild_id = ?',
-            [guild.id]
+        const logChannels = await database.get(
+            'SELECT channel_id FROM log_channels WHERE guild_id = ? AND type = ?',
+            [guild.id, 'moderation']
         );
         
-        if (!config) return;
+        if (!logChannels || !logChannels.channel_id) return;
         
-        // Log kanallarını parse et
-        let logChannels;
-        try {
-            // Burada automod_configs tablosunda log_channels alanı yoksa
-            // moderation log kanalı için logs tablosundan almaya çalışıyoruz
-            logChannels = await database.get(
-                'SELECT channel_id FROM log_channels WHERE guild_id = ? AND type = ?',
-                [guild.id, 'moderation']
-            );
-            
-            if (!logChannels || !logChannels.channel_id) return;
-            
-            const logChannelId = logChannels.channel_id;
-            
-            // Log kanalına eriş
-            const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
-            if (!logChannel) return;
-            
-            // Log embedini oluştur
-            const logEmbed = new EmbedBuilder()
-                .setColor('#FF9900')
-                .setTitle('🔇 Spam Nedeniyle Susturma')
-                .setDescription(`<@${user.id}> kullanıcısı spam yaptığı için susturuldu.`)
-                .addFields(
-                    { name: 'Kullanıcı', value: `${user.tag} (${user.id})`, inline: true },
-                    { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
-                    { name: 'Süre', value: `${duration / 60000} dakika`, inline: true },
-                    { name: 'İhlal Seviyesi', value: `${spamCount}. ihlal`, inline: true },
-                    { name: 'Sıfırlanma', value: `24 saat sonra`, inline: true }
-                )
-                .setTimestamp()
-                .setFooter({ text: 'AutoMod Spam Koruması' });
-            
-            // Log gönder
-            await logChannel.send({ embeds: [logEmbed] });
-            
-        } catch (parseError) {
-            console.error('Log kanalı çözümleme hatası:', parseError);
-        }
+        const logChannelId = logChannels.channel_id;
+        
+        // Log kanalına eriş
+        const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+        if (!logChannel) return;
+        
+        // Log embedini oluştur
+        const logEmbed = new EmbedBuilder()
+            .setColor('#FF9900')
+            .setTitle('🔇 Spam Nedeniyle Susturma')
+            .setDescription(`<@${user.id}> kullanıcısı spam yaptığı için susturuldu.`)
+            .addFields(
+                { name: 'Kullanıcı', value: `${user.tag} (${user.id})`, inline: true },
+                { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
+                { name: 'Süre', value: `${duration / 60000} dakika`, inline: true },
+                { name: 'İhlal Seviyesi', value: `${spamCount}. ihlal`, inline: true },
+                { name: 'Silinen Mesaj Sayısı', value: `${deletedCount}`, inline: true },
+                { name: 'Sıfırlanma', value: `24 saat sonra`, inline: true }
+            )
+            .setTimestamp()
+            .setFooter({ text: 'AutoMod Spam Koruması' });
+        
+        // Log gönder
+        await logChannel.send({ embeds: [logEmbed] });
+        
     } catch (error) {
         console.error('Spam log hatası:', error);
     }
@@ -294,7 +327,12 @@ setInterval(() => {
     
     // En az 30 dakika boyunca aktif olmayan kullanıcıları Map'ten temizle
     for (const [userId, userData] of userMessageCounts.entries()) {
-        const lastMessageTime = Math.max(...userData.messages, 0);
+        if (userData.messages.length === 0) {
+            userMessageCounts.delete(userId);
+            continue;
+        }
+        
+        const lastMessageTime = Math.max(...userData.messages.map(msg => msg.timestamp));
         if (now - lastMessageTime > 30 * 60 * 1000) { // 30 dakika
             userMessageCounts.delete(userId);
         }

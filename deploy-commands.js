@@ -1,4 +1,4 @@
-// deploy-commands.js - Guild-specific versiyonu
+// deploy-commands.js - Sunucuya özel komutlar için
 
 require('dotenv').config();
 const { REST } = require('@discordjs/rest');
@@ -65,15 +65,6 @@ console.log(`Hedef Sunucu ID: ${process.env.GUILD_ID}`);
         );
         
         console.log(`Başarıyla ${data.length} komut belirli sunucuya kaydedildi!`);
-        
-        // Mevcut global komutları temizlemek için - isteğe bağlı
-        console.log('Global komutlar temizleniyor...');
-        await rest.put(
-            Routes.applicationCommands(process.env.APP_ID),
-            { body: [] },
-        );
-        console.log('Global komutlar temizlendi.');
-        
     } catch (error) {
         console.error('Komut kaydı sırasında hata oluştu:', error);
         
