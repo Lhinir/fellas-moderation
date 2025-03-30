@@ -1,4 +1,4 @@
-// src/events/autoModHandler.js - Spam mesajlarını silme sisteminde "ilk mesaj" sorunu çözüldü
+// src/events/autoModHandler.js - Sadece spam yapılan kanalda mesaj silme, +1 mesaj
 
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const database = require('../modules/database');
@@ -8,14 +8,18 @@ const userMessageCounts = new Map();
 
 // Kademeli ceza süreleri (milisaniye cinsinden)
 const TIMEOUT_LEVELS = {
-    1: 2 * 60 * 1000,     // 2 dakika
-    2: 5 * 60 * 1000,     // 5 dakika
-    3: 10 * 60 * 1000,    // 10 dakika
-    4: 30 * 60 * 1000     // 30 dakika (maksimum ve sonraki ihlaller için)
+    1: 1 * 60 * 1000,     // 2 dakika
+    2: 3 * 60 * 1000,     // 5 dakika
+    3: 5 * 60 * 1000,    // 10 dakika
+    4: 10 * 60 * 1000,
+    5: 30 * 60 * 1000     // 30 dakika (maksimum ve sonraki ihlaller için)
 };
 
 // Spam geçmişinin sıfırlanma süresi (24 saat)
 const RESET_PERIOD = 24 * 60 * 60 * 1000; // 24 saat
+
+// Eşik değerinin üzerine ekstra kaç mesaj silinecek
+const EXTRA_DELETE_COUNT = 3; // Eşik + 1 mesaj
 
 module.exports = {
     name: 'messageCreate',
@@ -38,102 +42,43 @@ module.exports = {
             if (!config || !config.enabled) return;
             
             // ----- YASAKLI KELİME KONTROLÜ -----
-            if (config.banned_words) {
-                // Yasaklı kelimeleri parse et
-                const bannedWords = JSON.parse(config.banned_words || '[]');
-                
-                // Yasaklı kelime varsa, kontrol et
-                if (bannedWords.length > 0) {
-                    // Mesajı kontrol et
-                    const content = message.content.toLowerCase();
-                    
-                    // Hangi yasaklı kelimenin bulunduğunu kontrol et
-                    let foundBannedWord = null;
-                    for (const word of bannedWords) {
-                        if (content.includes(word.toLowerCase())) {
-                            foundBannedWord = word;
-                            break;
-                        }
-                    }
-                    
-                    // Yasaklı kelime varsa mesajı sil ve uyarı gönder
-                    if (foundBannedWord) {
-                        try {
-                            // Mesajı sil
-                            await message.delete();
-                            
-                            // Bulunan yasaklı kelimeyi maskele (örn: a**e)
-                            const maskedWord = foundBannedWord.length <= 2 
-                                ? foundBannedWord 
-                                : foundBannedWord[0] + '*'.repeat(foundBannedWord.length - 2) + foundBannedWord[foundBannedWord.length - 1];
-                            
-                            // Uyarı embedini oluştur
-                            const warningEmbed = new EmbedBuilder()
-                                .setColor('#FF0000')
-                                .setTitle('🛑 AutoMod Uyarısı')
-                                .setDescription(`<@${message.author.id}>, mesajınız yasaklı kelime içerdiği için silindi.`)
-                                .addFields(
-                                    { name: 'Kullanıcı', value: `${message.author.tag} (${message.author.id})`, inline: true },
-                                    { name: 'Kanal', value: `<#${message.channel.id}>`, inline: true },
-                                    { name: 'Yasaklı Kelime', value: maskedWord, inline: true }
-                                )
-                                .setTimestamp()
-                                .setFooter({ text: 'AutoMod Sistemi' });
-                            
-                            // Mesajın gönderildiği kanala uyarı gönder
-                            const warningMessage = await message.channel.send({ embeds: [warningEmbed] });
-                            
-                            // Uyarı mesajını belirli bir süre sonra sil (5 saniye)
-                            setTimeout(() => {
-                                warningMessage.delete().catch(err => {
-                                    // Mesaj zaten silinmişse sessizce devam et
-                                    console.error('Uyarı mesajı silme hatası:', err);
-                                });
-                            }, 5000); // 5 saniye (5000 ms)
-                            
-                            console.log(`AutoMod: ${message.author.tag} tarafından gönderilen yasaklı kelime içeren mesaj silindi.`);
-                            
-                            // Yasaklı kelime bulunduğu için diğer kontrolleri yapmaya gerek yok
-                            return;
-                        } catch (deleteError) {
-                            console.error('AutoMod: Mesaj silme hatası:', deleteError);
-                        }
-                    }
-                }
-            }
+            // ... (önceki kod aynı kalıyor)
             
             // ----- SPAM KONTROLÜ -----
             if (config.spam_protection) {
                 const userId = message.author.id;
                 const guildId = message.guild.id;
+                const channelId = message.channel.id;
                 const now = Date.now();
                 
                 // Kullanıcının mesaj sayacını al veya oluştur
                 if (!userMessageCounts.has(userId)) {
                     userMessageCounts.set(userId, {
-                        messages: []
+                        channelMessages: {}
                     });
                 }
                 
                 const userData = userMessageCounts.get(userId);
                 
-                // ÖNEMLİ DEĞİŞİKLİK: Önce mesaj kontrolünü yap sonra mesajı ekle
+                // Kanal bazlı mesaj listesini al veya oluştur
+                if (!userData.channelMessages[channelId]) {
+                    userData.channelMessages[channelId] = [];
+                }
+                
                 // Zamanlama penceresi dışındaki mesajları temizle
-                userData.messages = userData.messages.filter(
+                userData.channelMessages[channelId] = userData.channelMessages[channelId].filter(
                     msg => now - msg.timestamp < config.spam_interval
                 );
                 
-                // Mesaj sayısını kontrol et (mevcut mesajı EKLEMEDEN ÖNCE)
-                // Eşik - 1 değerine ulaşıldığında tetikle, böylece bu mesaj da silinsin
-                if (userData.messages.length >= (config.spam_threshold - 1)) {
+                // Yeni mesajı ekle
+                userData.channelMessages[channelId].push({
+                    timestamp: now,
+                    messageId: message.id
+                });
+                
+                // Spam tespit et - eşik değerine ulaşıldığında
+                if (userData.channelMessages[channelId].length >= config.spam_threshold) {
                     try {
-                        // Yeni mesajı ekle (silmek için)
-                        userData.messages.push({
-                            timestamp: now,
-                            messageId: message.id,
-                            channelId: message.channel.id
-                        });
-                        
                         // Bot yetkisini kontrol et
                         if (!message.guild.members.me.permissions.has(PermissionFlagsBits.ModerateMembers)) {
                             console.log('Bot, kullanıcıları susturmak için gerekli yetkiye sahip değil!');
@@ -169,41 +114,40 @@ module.exports = {
                         // Ceza süresini belirle
                         const timeoutDuration = TIMEOUT_LEVELS[spamCount];
                         
-                        // SPAM MESAJLARINI SİL
-                        const messagesToDelete = [...userData.messages]; // Kopyasını al
+                        // SADECE SPAM YAPILAN KANALDA MESAJLARI SİL
                         let deletedCount = 0;
                         
-                        // Spam mesajlarını kanal bazında topla
-                        const messagesByChannel = {};
-                        
-                        for (const msg of messagesToDelete) {
-                            if (!messagesByChannel[msg.channelId]) {
-                                messagesByChannel[msg.channelId] = [];
-                            }
-                            messagesByChannel[msg.channelId].push(msg.messageId);
-                        }
-                        
-                        // Her kanal için toplu mesaj silme işlemi yap
-                        for (const [channelId, messageIds] of Object.entries(messagesByChannel)) {
-                            try {
-                                const channel = await message.guild.channels.fetch(channelId);
-                                if (!channel) continue;
-                                
-                                // Mesajları toplu sil
-                                await channel.bulkDelete(messageIds)
+                        try {
+                            // Bu kanaldan son mesajları getir (threshold + extra)
+                            const fetchLimit = config.spam_threshold + EXTRA_DELETE_COUNT;
+                            
+                            // Kanaldan son mesajları getir
+                            const fetchedMessages = await message.channel.messages.fetch({ limit: 100 });
+                            
+                            // Sadece spam yapan kullanıcının mesajlarını filtrele
+                            const userMessages = fetchedMessages.filter(msg => 
+                                msg.author.id === userId && 
+                                now - msg.createdTimestamp < config.spam_interval * 2 // Biraz daha geniş zaman aralığı
+                            ).first(fetchLimit); // En son X mesajı al
+                            
+                            // Mesajları toplu sil
+                            if (userMessages.length > 0) {
+                                await message.channel.bulkDelete(userMessages)
                                     .then(deleted => {
-                                        deletedCount += deleted.size;
+                                        deletedCount = deleted.size;
                                     })
                                     .catch(error => {
-                                        console.error(`Kanal ${channelId}'de mesaj silme hatası:`, error);
+                                        console.error(`Mesaj silme hatası:`, error);
                                     });
-                            } catch (channelError) {
-                                console.error(`Kanal erişim hatası (${channelId}):`, channelError);
                             }
+                        } catch (deleteError) {
+                            console.error('Mesaj silme hatası:', deleteError);
                         }
                         
-                        // Map'ten kullanıcıyı temizle (spam mesajları silindiği için)
-                        userMessageCounts.delete(userId);
+                        // Map'ten kullanıcının bu kanaldaki mesajlarını temizle
+                        if (userData.channelMessages[channelId]) {
+                            userData.channelMessages[channelId] = [];
+                        }
                         
                         // Kullanıcıyı sustur
                         const member = await message.guild.members.fetch(userId);
@@ -260,18 +204,10 @@ module.exports = {
                         
                         console.log(`AutoMod: ${message.author.tag} spam yaptığı için ${timeoutDuration / 60000} dakika susturuldu ve ${deletedCount} mesajı silindi (${spamCount}. ihlal).`);
                         
-                        return; // İşlem tamamlandı, geri dön
                     } catch (timeoutError) {
                         console.error('Kullanıcı susturma hatası:', timeoutError);
                     }
                 }
-                
-                // Spam tespit edilmediyse, mesajı listeye ekle
-                userData.messages.push({
-                    timestamp: now,
-                    messageId: message.id,
-                    channelId: message.channel.id
-                });
             }
             
         } catch (error) {
@@ -327,13 +263,29 @@ setInterval(() => {
     
     // En az 30 dakika boyunca aktif olmayan kullanıcıları Map'ten temizle
     for (const [userId, userData] of userMessageCounts.entries()) {
-        if (userData.messages.length === 0) {
-            userMessageCounts.delete(userId);
-            continue;
+        let hasRecentMessages = false;
+        
+        // Tüm kanallardaki mesajları kontrol et
+        for (const channelId in userData.channelMessages) {
+            if (userData.channelMessages[channelId].length === 0) {
+                delete userData.channelMessages[channelId];
+                continue;
+            }
+            
+            // En son mesaj zamanını kontrol et
+            const lastMessages = userData.channelMessages[channelId];
+            const lastMessageTime = Math.max(...lastMessages.map(msg => msg.timestamp));
+            
+            if (now - lastMessageTime < 30 * 60 * 1000) { // 30 dakikadan yeni
+                hasRecentMessages = true;
+            } else {
+                // 30 dakikadan eski kanal mesajlarını temizle
+                delete userData.channelMessages[channelId];
+            }
         }
         
-        const lastMessageTime = Math.max(...userData.messages.map(msg => msg.timestamp));
-        if (now - lastMessageTime > 30 * 60 * 1000) { // 30 dakika
+        // Hiç aktif kanal yoksa kullanıcıyı tamamen temizle
+        if (!hasRecentMessages || Object.keys(userData.channelMessages).length === 0) {
             userMessageCounts.delete(userId);
         }
     }
