@@ -1,4 +1,4 @@
-// src/commands/moderation/automod.js - SlashCommandBuilder'a yeni alt komut ekle
+// src/commands/moderation/automod.js - Düzeltilmiş versiyon
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
@@ -126,7 +126,36 @@ module.exports = {
     }
 };
 
-// Veritabanı fonksiyonları - getOrCreateAutoModConfig güncellenmesi gereken kısım
+// Veritabanı fonksiyonları
+async function createAutoModTableIfNotExists() {
+    try {
+        // Tablo var mı kontrol et
+        const tableExists = await database.get(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='automod_configs'"
+        );
+        
+        if (!tableExists) {
+            // Eğer tablo yoksa oluştur
+            await database.run(`
+                CREATE TABLE IF NOT EXISTS automod_configs (
+                    guild_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 0,
+                    banned_words TEXT DEFAULT '[]',
+                    spam_protection INTEGER DEFAULT 0,
+                    spam_threshold INTEGER DEFAULT 5,
+                    spam_interval INTEGER DEFAULT 5000,
+                    spam_timeout INTEGER DEFAULT 300000,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            console.log('AutoMod tablosu oluşturuldu.');
+        }
+    } catch (error) {
+        console.error('AutoMod tablosu oluşturma hatası:', error);
+        throw error;
+    }
+}
+
 async function getOrCreateAutoModConfig(guildId) {
     try {
         // Önce mevcut konfigürasyonu al
@@ -138,23 +167,35 @@ async function getOrCreateAutoModConfig(guildId) {
         // Eğer konfig yoksa yeni oluştur
         if (!config) {
             await database.run(
-                'INSERT INTO automod_configs (guild_id, enabled, banned_words, spam_protection, spam_threshold, spam_interval, spam_timeout) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                'INSERT OR IGNORE INTO automod_configs (guild_id, enabled, banned_words, spam_protection, spam_threshold, spam_interval, spam_timeout) VALUES (?, ?, ?, ?, ?, ?, ?)',
                 [guildId, 0, '[]', 0, 5, 5000, 300000]
             );
             
-            config = {
-                guild_id: guildId,
-                enabled: 0,
-                banned_words: '[]',
-                spam_protection: 0,
-                spam_threshold: 5,
-                spam_interval: 5000, // 5 saniye
-                spam_timeout: 300000 // 5 dakika
-            };
+            config = await database.get(
+                'SELECT * FROM automod_configs WHERE guild_id = ?',
+                [guildId]
+            );
+            
+            if (!config) {
+                config = {
+                    guild_id: guildId,
+                    enabled: 0,
+                    banned_words: '[]',
+                    spam_protection: 0,
+                    spam_threshold: 5,
+                    spam_interval: 5000, // 5 saniye
+                    spam_timeout: 300000 // 5 dakika
+                };
+            }
         }
         
         // JSON string'i parse et
-        config.banned_words = JSON.parse(config.banned_words);
+        try {
+            config.banned_words = JSON.parse(config.banned_words || '[]');
+        } catch (e) {
+            config.banned_words = [];
+            console.error('Yasaklı kelime listesi parse hatası:', e);
+        }
         
         return config;
     } catch (error) {
@@ -163,129 +204,7 @@ async function getOrCreateAutoModConfig(guildId) {
     }
 }
 
-// updateAutoModConfig fonksiyonunu güncelle
-async function updateAutoModConfig(guildId, config) {
-    try {
-        const bannedWordsJson = JSON.stringify(config.banned_words);
-        
-        await database.run(
-            `UPDATE automod_configs SET 
-             enabled = ?, banned_words = ?, 
-             spam_protection = ?, spam_threshold = ?, 
-             spam_interval = ?, spam_timeout = ?,
-             updated_at = CURRENT_TIMESTAMP 
-             WHERE guild_id = ?`,
-            [
-                config.enabled ? 1 : 0, 
-                bannedWordsJson,
-                config.spam_protection ? 1 : 0,
-                config.spam_threshold,
-                config.spam_interval,
-                config.spam_timeout,
-                guildId
-            ]
-        );
-    } catch (error) {
-        console.error('AutoMod konfigürasyonu güncellenemedi:', error);
-        throw error;
-    }
-}
-async function createAutoModTableIfNotExists() {
-    try {
-        // AutoMod tablosunu güncellenmiş alanlarla oluştur
-        await database.run(`
-            CREATE TABLE IF NOT EXISTS automod_configs (
-                guild_id TEXT PRIMARY KEY,
-                enabled INTEGER DEFAULT 0,
-                banned_words TEXT DEFAULT '[]',
-                spam_protection INTEGER DEFAULT 0,
-                spam_threshold INTEGER DEFAULT 5,
-                spam_interval INTEGER DEFAULT 5000,
-                spam_timeout INTEGER DEFAULT 300000,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-    } catch (error) {
-        console.error('AutoMod tablosu oluşturma hatası:', error);
-        throw error;
-    }
-}
-
-// Spam koruma fonksiyonları
-async function handleSpamProtection(interaction, config, action) {
-    if (action === 'status') {
-        const embed = new EmbedBuilder()
-            .setColor(config.spam_protection ? '#00ff00' : '#ff0000')
-            .setTitle('Spam Koruması Durumu')
-            .setDescription(`Spam koruması şu anda **${config.spam_protection ? 'Aktif' : 'Devre Dışı'}**`)
-            .addFields(
-                { name: 'Eşik Değeri', value: `${config.spam_threshold} mesaj`, inline: true },
-                { name: 'Kontrol Süresi', value: `${config.spam_interval / 1000} saniye`, inline: true },
-                { name: 'Susturma Süresi', value: `${config.spam_timeout / 60000} dakika`, inline: true }
-            )
-            .setTimestamp();
-        
-        return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-    else if (action === 'enable') {
-        config.spam_protection = true;
-        await updateAutoModConfig(interaction.guild.id, config);
-        
-        return interaction.reply({
-            content: `Spam koruması **aktifleştirildi**. ${config.spam_interval / 1000} saniye içinde ${config.spam_threshold} mesaj gönderenler ${config.spam_timeout / 60000} dakika susturulacak.`,
-            ephemeral: true
-        });
-    }
-    else if (action === 'disable') {
-        config.spam_protection = false;
-        await updateAutoModConfig(interaction.guild.id, config);
-        
-        return interaction.reply({
-            content: 'Spam koruması **devre dışı bırakıldı**.',
-            ephemeral: true
-        });
-    }
-}
-
-async function configureSpamSettings(interaction, config) {
-    const threshold = interaction.options.getInteger('threshold');
-    const interval = interaction.options.getInteger('interval');
-    const timeout = interaction.options.getInteger('timeout');
-    
-    if (!threshold && !interval && !timeout) {
-        return interaction.reply({
-            content: 'En az bir ayar belirtmelisiniz (threshold, interval veya timeout).',
-            ephemeral: true
-        });
-    }
-    
-    let changes = [];
-    
-    if (threshold) {
-        config.spam_threshold = threshold;
-        changes.push(`Eşik değeri: ${threshold} mesaj`);
-    }
-    
-    if (interval) {
-        config.spam_interval = interval * 1000; // Saniyeyi milisaniyeye çevir
-        changes.push(`Kontrol süresi: ${interval} saniye`);
-    }
-    
-    if (timeout) {
-        config.spam_timeout = timeout * 60000; // Dakikayı milisaniyeye çevir
-        changes.push(`Susturma süresi: ${timeout} dakika`);
-    }
-    
-    await updateAutoModConfig(interaction.guild.id, config);
-    
-    return interaction.reply({
-        content: `Spam koruması ayarları güncellendi:\n${changes.join('\n')}`,
-        ephemeral: true
-    });
-}
-
-// showAutoModStatus fonksiyonunu da güncelleyelim
+// Komut işlevleri
 async function showAutoModStatus(interaction, config) {
     const embed = new EmbedBuilder()
         .setColor(config.enabled ? '#00ff00' : '#ff0000')
@@ -310,4 +229,236 @@ async function showAutoModStatus(interaction, config) {
     }
     
     return interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+async function toggleAutoMod(interaction, config, state) {
+    const newState = state === 'enable';
+    
+    try {
+        await database.run(
+            'UPDATE automod_configs SET enabled = ? WHERE guild_id = ?',
+            [newState ? 1 : 0, interaction.guild.id]
+        );
+        
+        return interaction.reply({
+            content: `AutoMod **${newState ? 'Aktif' : 'Devre Dışı'}** durumuna getirildi.`,
+            ephemeral: true
+        });
+    } catch (error) {
+        console.error('AutoMod toggle hatası:', error);
+        throw error;
+    }
+}
+
+async function handleBannedWords(interaction, config, action, word) {
+    if (action === 'view') {
+        if (config.banned_words.length === 0) {
+            return interaction.reply({
+                content: 'Yasaklı kelime listesi boş.',
+                ephemeral: true
+            });
+        }
+        
+        const wordsList = config.banned_words.join(', ');
+        return interaction.reply({
+            content: `**Yasaklı Kelimeler**:\n${wordsList}`,
+            ephemeral: true
+        });
+    }
+    else if (action === 'add') {
+        if (!word) {
+            return interaction.reply({
+                content: 'Eklenecek kelimeyi belirtmelisiniz.',
+                ephemeral: true
+            });
+        }
+        
+        if (config.banned_words.includes(word)) {
+            return interaction.reply({
+                content: `"${word}" zaten yasaklı kelime listesinde.`,
+                ephemeral: true
+            });
+        }
+        
+        // Kelimeyi ekle
+        config.banned_words.push(word);
+        
+        // Veritabanını güncelle
+        try {
+            await database.run(
+                'UPDATE automod_configs SET banned_words = ? WHERE guild_id = ?',
+                [JSON.stringify(config.banned_words), interaction.guild.id]
+            );
+            
+            return interaction.reply({
+                content: `"${word}" yasaklı kelime listesine eklendi.`,
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error('Yasaklı kelime ekleme hatası:', error);
+            throw error;
+        }
+    }
+    else if (action === 'remove') {
+        if (!word) {
+            return interaction.reply({
+                content: 'Çıkarılacak kelimeyi belirtmelisiniz.',
+                ephemeral: true
+            });
+        }
+        
+        const index = config.banned_words.indexOf(word);
+        if (index === -1) {
+            return interaction.reply({
+                content: `"${word}" yasaklı kelime listesinde bulunamadı.`,
+                ephemeral: true
+            });
+        }
+        
+        // Kelimeyi çıkar
+        config.banned_words.splice(index, 1);
+        
+        // Veritabanını güncelle
+        try {
+            await database.run(
+                'UPDATE automod_configs SET banned_words = ? WHERE guild_id = ?',
+                [JSON.stringify(config.banned_words), interaction.guild.id]
+            );
+            
+            return interaction.reply({
+                content: `"${word}" yasaklı kelime listesinden çıkarıldı.`,
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error('Yasaklı kelime çıkarma hatası:', error);
+            throw error;
+        }
+    }
+    else if (action === 'clear') {
+        // Listeyi temizle
+        config.banned_words = [];
+        
+        // Veritabanını güncelle
+        try {
+            await database.run(
+                'UPDATE automod_configs SET banned_words = ? WHERE guild_id = ?',
+                ['[]', interaction.guild.id]
+            );
+            
+            return interaction.reply({
+                content: 'Yasaklı kelime listesi temizlendi.',
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error('Yasaklı kelime listesi temizleme hatası:', error);
+            throw error;
+        }
+    }
+}
+
+async function handleSpamProtection(interaction, config, action) {
+    if (action === 'status') {
+        const embed = new EmbedBuilder()
+            .setColor(config.spam_protection ? '#00ff00' : '#ff0000')
+            .setTitle('Spam Koruması Durumu')
+            .setDescription(`Spam koruması şu anda **${config.spam_protection ? 'Aktif' : 'Devre Dışı'}**`)
+            .addFields(
+                { name: 'Eşik Değeri', value: `${config.spam_threshold} mesaj`, inline: true },
+                { name: 'Kontrol Süresi', value: `${config.spam_interval / 1000} saniye`, inline: true },
+                { name: 'Susturma Süresi', value: `${config.spam_timeout / 60000} dakika`, inline: true }
+            )
+            .setTimestamp();
+        
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    else if (action === 'enable') {
+        try {
+            await database.run(
+                'UPDATE automod_configs SET spam_protection = 1 WHERE guild_id = ?',
+                [interaction.guild.id]
+            );
+            
+            return interaction.reply({
+                content: `Spam koruması **aktifleştirildi**. ${config.spam_interval / 1000} saniye içinde ${config.spam_threshold} mesaj gönderenler ${config.spam_timeout / 60000} dakika susturulacak.`,
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error('Spam koruması etkinleştirme hatası:', error);
+            throw error;
+        }
+    }
+    else if (action === 'disable') {
+        try {
+            await database.run(
+                'UPDATE automod_configs SET spam_protection = 0 WHERE guild_id = ?',
+                [interaction.guild.id]
+            );
+            
+            return interaction.reply({
+                content: 'Spam koruması **devre dışı bırakıldı**.',
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error('Spam koruması devre dışı bırakma hatası:', error);
+            throw error;
+        }
+    }
+}
+
+async function configureSpamSettings(interaction, config) {
+    const threshold = interaction.options.getInteger('threshold');
+    const interval = interaction.options.getInteger('interval');
+    const timeout = interaction.options.getInteger('timeout');
+    
+    if (!threshold && !interval && !timeout) {
+        return interaction.reply({
+            content: 'En az bir ayar belirtmelisiniz (threshold, interval veya timeout).',
+            ephemeral: true
+        });
+    }
+    
+    // Değişecek değerleri güncelle
+    const updates = {};
+    const changes = [];
+    
+    if (threshold) {
+        updates.spam_threshold = threshold;
+        changes.push(`Eşik değeri: ${threshold} mesaj`);
+    }
+    
+    if (interval) {
+        updates.spam_interval = interval * 1000; // Saniyeyi milisaniyeye çevir
+        changes.push(`Kontrol süresi: ${interval} saniye`);
+    }
+    
+    if (timeout) {
+        updates.spam_timeout = timeout * 60000; // Dakikayı milisaniyeye çevir
+        changes.push(`Susturma süresi: ${timeout} dakika`);
+    }
+    
+    // SQL sorgusunu ve parametreleri oluştur
+    let sql = 'UPDATE automod_configs SET ';
+    const setClauses = [];
+    const params = [];
+    
+    for (const [key, value] of Object.entries(updates)) {
+        setClauses.push(`${key} = ?`);
+        params.push(value);
+    }
+    
+    sql += setClauses.join(', ');
+    sql += ' WHERE guild_id = ?';
+    params.push(interaction.guild.id);
+    
+    try {
+        await database.run(sql, params);
+        
+        return interaction.reply({
+            content: `Spam koruması ayarları güncellendi:\n${changes.join('\n')}`,
+            ephemeral: true
+        });
+    } catch (error) {
+        console.error('Spam ayarları güncelleme hatası:', error);
+        throw error;
+    }
 }

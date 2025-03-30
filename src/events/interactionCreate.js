@@ -27,7 +27,7 @@ module.exports = {
                     if (!interaction.replied && !interaction.deferred) {
                         await interaction.reply({
                             content: 'Komut çalıştırılırken bir hata oluştu!',
-                            flags: { ephemeral: true }
+                            ephemeral: true
                         });
                     }
                 } catch (replyError) {
