@@ -1,4 +1,4 @@
-// index.js - Periyodik görevler eklenmiş
+// index.js - Güncellenmiş ve iyileştirilmiş versiyonu
 
 require('dotenv').config();
 const { Client, Collection, GatewayIntentBits, Partials, ActivityType } = require('discord.js');
@@ -22,8 +22,12 @@ const client = new Client({
 // Koleksiyonları tanımla
 client.commands = new Collection();
 client.buttons = new Collection();
-client.cooldowns = new Collection();
 client.selectMenus = new Collection();
+client.modals = new Collection();
+client.cooldowns = new Collection();
+
+// Regex işleyicileri için map
+const regexHandlers = new Map();
 
 // Komutları yükle
 const foldersPath = path.join(__dirname, 'src/commands');
@@ -31,235 +35,171 @@ const commandFolders = fs.readdirSync(foldersPath);
 
 for (const folder of commandFolders) {
     const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
     
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
+    try {
+        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
         
-        // Komutun gerekli özelliklere sahip olduğunu kontrol et
-        if ('data' in command && 'execute' in command) {
-            client.commands.set(command.data.name, command);
-            console.log(`Komut yüklendi: ${command.data.name}`);
-        } else {
-            console.log(`[UYARI] ${filePath} komutu "data" veya "execute" özelliğine sahip değil.`);
+        for (const file of commandFiles) {
+            try {
+                const filePath = path.join(commandsPath, file);
+                const command = require(filePath);
+                
+                // Komutun gerekli özelliklere sahip olduğunu kontrol et
+                if ('data' in command && 'execute' in command) {
+                    client.commands.set(command.data.name, command);
+                    console.log(`Komut yüklendi: ${command.data.name}`);
+                } else {
+                    console.log(`[UYARI] ${filePath} komutu "data" veya "execute" özelliğine sahip değil.`);
+                }
+            } catch (fileError) {
+                console.error(`Komut dosyası yükleme hatası (${file}):`, fileError);
+            }
         }
+    } catch (dirError) {
+        console.error(`Komut dizini okuma hatası (${folder}):`, dirError);
     }
 }
 
 // Butonları yükle
 const buttonsPath = path.join(__dirname, 'src/buttons');
-
-// Klasörün var olup olmadığını kontrol et
 if (fs.existsSync(buttonsPath)) {
-    const buttonFiles = fs.readdirSync(buttonsPath).filter(file => file.endsWith('.js'));
-
-    for (const file of buttonFiles) {
-        const filePath = path.join(buttonsPath, file);
-        const button = require(filePath);
+    try {
+        const buttonFiles = fs.readdirSync(buttonsPath).filter(file => file.endsWith('.js'));
         
-        if ('customId' in button && 'execute' in button) {
-            client.buttons.set(button.customId, button);
-            console.log(`Buton yüklendi: ${button.customId}`);
-        } else {
-            console.log(`[UYARI] ${filePath} butonu "customId" veya "execute" özelliğine sahip değil.`);
+        for (const file of buttonFiles) {
+            try {
+                const filePath = path.join(buttonsPath, file);
+                const button = require(filePath);
+                
+                if ('customId' in button && 'execute' in button) {
+                    if (button.customId instanceof RegExp) {
+                        // Regex customId için özel işleme
+                        regexHandlers.set(button.customId.toString(), {
+                            type: 'button',
+                            regex: button.customId,
+                            execute: button.execute
+                        });
+                        console.log(`Regex buton yüklendi: ${button.customId}`);
+                    } else {
+                        // Normal string customId için
+                        client.buttons.set(button.customId, button);
+                        console.log(`Buton yüklendi: ${button.customId}`);
+                    }
+                } else {
+                    console.log(`[UYARI] ${filePath} butonu "customId" veya "execute" özelliğine sahip değil.`);
+                }
+            } catch (fileError) {
+                console.error(`Buton dosyası yükleme hatası (${file}):`, fileError);
+            }
         }
+    } catch (dirError) {
+        console.error('Buton dizini okuma hatası:', dirError);
     }
-    console.log('Butonlar yüklendi.');
 } else {
     console.log('src/buttons klasörü bulunamadı, butonlar yüklenmedi.');
-}
-
-const regexHandlers = new Map();
-
-
-// Butonları yükle
-if (fs.existsSync(buttonsPath)) {
-    const buttonFiles = fs.readdirSync(buttonsPath).filter(file => file.endsWith('.js'));
-    
-    for (const file of buttonFiles) {
-        const filePath = path.join(buttonsPath, file);
-        const button = require(filePath);
-        
-        if ('customId' in button && 'execute' in button) {
-            if (button.customId instanceof RegExp) {
-                regexHandlers.set(button.customId.toString(), {
-                    type: 'button',
-                    regex: button.customId,
-                    execute: button.execute
-                });
-            } else {
-                client.buttons.set(button.customId, button);
-            }
-            console.log(`Buton yüklendi: ${button.customId}`);
-        } else {
-            console.log(`[UYARI] ${filePath} butonu "customId" veya "execute" özelliğine sahip değil.`);
-        }
-    }
 }
 
 // Select menüleri yükle
 const selectMenusPath = path.join(__dirname, 'src/selectMenus');
 if (fs.existsSync(selectMenusPath)) {
-    const selectMenuFiles = fs.readdirSync(selectMenusPath).filter(file => file.endsWith('.js'));
-    
-    for (const file of selectMenuFiles) {
-        const filePath = path.join(selectMenusPath, file);
-        const selectMenu = require(filePath);
+    try {
+        const selectMenuFiles = fs.readdirSync(selectMenusPath).filter(file => file.endsWith('.js'));
         
-        if ('customId' in selectMenu && 'execute' in selectMenu) {
-            if (selectMenu.customId instanceof RegExp) {
-                regexHandlers.set(selectMenu.customId.toString(), {
-                    type: 'selectMenu',
-                    regex: selectMenu.customId,
-                    execute: selectMenu.execute
-                });
-            } else {
-                client.selectMenus.set(selectMenu.customId, selectMenu);
+        for (const file of selectMenuFiles) {
+            try {
+                const filePath = path.join(selectMenusPath, file);
+                const selectMenu = require(filePath);
+                
+                if ('customId' in selectMenu && 'execute' in selectMenu) {
+                    if (selectMenu.customId instanceof RegExp) {
+                        // Regex customId için özel işleme
+                        regexHandlers.set(selectMenu.customId.toString(), {
+                            type: 'selectMenu',
+                            regex: selectMenu.customId,
+                            execute: selectMenu.execute
+                        });
+                        console.log(`Regex select menu yüklendi: ${selectMenu.customId}`);
+                    } else {
+                        // Normal string customId için
+                        client.selectMenus.set(selectMenu.customId, selectMenu);
+                        console.log(`Select menu yüklendi: ${selectMenu.customId}`);
+                    }
+                } else {
+                    console.log(`[UYARI] ${filePath} select menu "customId" veya "execute" özelliğine sahip değil.`);
+                }
+            } catch (fileError) {
+                console.error(`Select menu dosyası yükleme hatası (${file}):`, fileError);
             }
-            console.log(`Select Menu yüklendi: ${selectMenu.customId}`);
-        } else {
-            console.log(`[UYARI] ${filePath} select menü "customId" veya "execute" özelliğine sahip değil.`);
         }
+    } catch (dirError) {
+        console.error('Select menu dizini okuma hatası:', dirError);
     }
+} else {
+    console.log('src/selectMenus klasörü bulunamadı, select menüler yüklenmedi.');
 }
 
-// Modal yükle
+// Modalları yükle
 const modalsPath = path.join(__dirname, 'src/modals');
 if (fs.existsSync(modalsPath)) {
-    const modalFiles = fs.readdirSync(modalsPath).filter(file => file.endsWith('.js'));
-    
-    for (const file of modalFiles) {
-        const filePath = path.join(modalsPath, file);
-        const modal = require(filePath);
-        
-        if ('customId' in modal && 'execute' in modal) {
-            if (modal.customId instanceof RegExp) {
-                regexHandlers.set(modal.customId.toString(), {
-                    type: 'modal',
-                    regex: modal.customId,
-                    execute: modal.execute
-                });
-            } else {
-                client.modals.set(modal.customId, modal);
-            }
-            console.log(`Modal yüklendi: ${modal.customId}`);
-        } else {
-            console.log(`[UYARI] ${filePath} modal "customId" veya "execute" özelliğine sahip değil.`);
-        }
-    }
-}
-
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        // ... mevcut komut işleme kodu ...
-    } 
-    else if (interaction.isButton()) {
-        try {
-            // Direkt ID eşleşmesi
-            const button = client.buttons.get(interaction.customId);
-            
-            if (button) {
-                await button.execute(interaction);
-                return;
-            }
-            
-            // Regex ID eşleşmesi
-            for (const [key, handler] of regexHandlers.entries()) {
-                if (handler.type === 'button' && handler.regex.test(interaction.customId)) {
-                    await handler.execute(interaction);
-                    return;
-                }
-            }
-        } catch (error) {
-            console.error(`Buton işleme hatası (${interaction.customId}):`, error);
-            await safeReply(interaction, 'Buton işlenirken bir hata oluştu!');
-        }
-    }
-    else if (interaction.isStringSelectMenu()) {
-        try {
-            // Direkt ID eşleşmesi
-            const selectMenu = client.selectMenus.get(interaction.customId);
-            
-            if (selectMenu) {
-                await selectMenu.execute(interaction);
-                return;
-            }
-            
-            // Regex ID eşleşmesi
-            for (const [key, handler] of regexHandlers.entries()) {
-                if (handler.type === 'selectMenu' && handler.regex.test(interaction.customId)) {
-                    await handler.execute(interaction);
-                    return;
-                }
-            }
-        } catch (error) {
-            console.error(`Select menu işleme hatası (${interaction.customId}):`, error);
-            await safeReply(interaction, 'Select menu işlenirken bir hata oluştu!');
-        }
-    }
-    else if (interaction.isModalSubmit()) {
-        try {
-            // Direkt ID eşleşmesi
-            const modal = client.modals.get(interaction.customId);
-            
-            if (modal) {
-                await modal.execute(interaction);
-                return;
-            }
-            
-            // Regex ID eşleşmesi
-            for (const [key, handler] of regexHandlers.entries()) {
-                if (handler.type === 'modal' && handler.regex.test(interaction.customId)) {
-                    await handler.execute(interaction);
-                    return;
-                }
-            }
-        } catch (error) {
-            console.error(`Modal işleme hatası (${interaction.customId}):`, error);
-            await safeReply(interaction, 'Form işlenirken bir hata oluştu!');
-        }
-    }
-});
-
-// Güvenli yanıt fonksiyonu
-async function safeReply(interaction, content) {
     try {
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: content,
-                ephemeral: true
-            });
-        } else if (interaction.deferred) {
-            await interaction.editReply({
-                content: content
-            });
-        } else {
-            await interaction.followUp({
-                content: content,
-                ephemeral: true
-            });
+        const modalFiles = fs.readdirSync(modalsPath).filter(file => file.endsWith('.js'));
+        
+        for (const file of modalFiles) {
+            try {
+                const filePath = path.join(modalsPath, file);
+                const modal = require(filePath);
+                
+                if ('customId' in modal && 'execute' in modal) {
+                    if (modal.customId instanceof RegExp) {
+                        // Regex customId için özel işleme
+                        regexHandlers.set(modal.customId.toString(), {
+                            type: 'modal',
+                            regex: modal.customId,
+                            execute: modal.execute
+                        });
+                        console.log(`Regex modal yüklendi: ${modal.customId}`);
+                    } else {
+                        // Normal string customId için
+                        client.modals.set(modal.customId, modal);
+                        console.log(`Modal yüklendi: ${modal.customId}`);
+                    }
+                } else {
+                    console.log(`[UYARI] ${filePath} modal "customId" veya "execute" özelliğine sahip değil.`);
+                }
+            } catch (fileError) {
+                console.error(`Modal dosyası yükleme hatası (${file}):`, fileError);
+            }
         }
-    } catch (error) {
-        console.error('Yanıt gönderme hatası:', error);
+    } catch (dirError) {
+        console.error('Modal dizini okuma hatası:', dirError);
     }
+} else {
+    console.log('src/modals klasörü bulunamadı, modallar yüklenmedi.');
 }
 
 // Event'leri yükle
 const eventsPath = path.join(__dirname, 'src/events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
-
-for (const file of eventFiles) {
-    const filePath = path.join(eventsPath, file);
-    const event = require(filePath);
+try {
+    const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
     
-    if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
-    } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
+    for (const file of eventFiles) {
+        try {
+            const filePath = path.join(eventsPath, file);
+            const event = require(filePath);
+            
+            if (event.once) {
+                client.once(event.name, (...args) => event.execute(...args, client));
+            } else {
+                client.on(event.name, (...args) => event.execute(...args, client));
+            }
+            
+            console.log(`Event yüklendi: ${event.name}`);
+        } catch (fileError) {
+            console.error(`Event dosyası yükleme hatası (${file}):`, fileError);
+        }
     }
-    
-    console.log(`Event yüklendi: ${event.name}`);
+} catch (dirError) {
+    console.error('Event dizini okuma hatası:', dirError);
 }
 
 // Periyodik temizlik görevleri
@@ -312,12 +252,18 @@ client.once('ready', async () => {
     });
     
     // Tüm sunucuları veritabanında başlat
-    for (const guild of client.guilds.cache.values()) {
-        await database.guilds.setupGuild(guild.id);
-        console.log(`Guild hazırlandı: ${guild.name} (${guild.id})`);
+    try {
+        for (const guild of client.guilds.cache.values()) {
+            await database.guilds.setupGuild(guild.id).catch(err => {
+                console.error(`${guild.name} (${guild.id}) sunucusu için veritabanı hatası:`, err);
+            });
+            console.log(`Guild hazırlandı: ${guild.name} (${guild.id})`);
+        }
+        
+        console.log(`${client.guilds.cache.size} sunucu veritabanında hazırlandı.`);
+    } catch (dbError) {
+        console.error('Sunucu hazırlama hatası:', dbError);
     }
-    
-    console.log(`${client.guilds.cache.size} sunucu veritabanında hazırlandı.`);
     
     // Periyodik görevleri başlat
     setupPeriodicTasks();
@@ -325,10 +271,135 @@ client.once('ready', async () => {
 
 // Yeni sunucu eklendiğinde
 client.on('guildCreate', async (guild) => {
-    // Yeni sunucuyu veritabanına ekle
-    await database.guilds.setupGuild(guild.id);
-    console.log(`Yeni sunucu eklendi ve veritabanına kaydedildi: ${guild.name} (${guild.id})`);
+    try {
+        // Yeni sunucuyu veritabanına ekle
+        await database.guilds.setupGuild(guild.id);
+        console.log(`Yeni sunucu eklendi ve veritabanına kaydedildi: ${guild.name} (${guild.id})`);
+    } catch (error) {
+        console.error(`Yeni sunucu ekleme hatası (${guild.id}):`, error);
+    }
 });
+
+// Slash komut ve diğer etkileşimler için handler
+client.on('interactionCreate', async (interaction) => {
+    try {
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            
+            if (!command) {
+                console.error(`${interaction.commandName} adlı komut bulunamadı.`);
+                return;
+            }
+            
+            try {
+                await command.execute(interaction);
+            } catch (cmdError) {
+                console.error(`Komut çalıştırma hatası (${interaction.commandName}):`, cmdError);
+                await safeReply(interaction, 'Komut çalıştırılırken bir hata oluştu!');
+            }
+        } 
+        else if (interaction.isButton()) {
+            try {
+                // Önce doğrudan eşleşme kontrolü
+                const button = client.buttons.get(interaction.customId);
+                
+                if (button) {
+                    await button.execute(interaction);
+                    return;
+                }
+                
+                // Sonra regex eşleşmeleri kontrolü
+                for (const [key, handler] of regexHandlers.entries()) {
+                    if (handler.type === 'button' && handler.regex.test(interaction.customId)) {
+                        await handler.execute(interaction);
+                        return;
+                    }
+                }
+                
+                console.log(`Uygun buton işleyici bulunamadı: ${interaction.customId}`);
+            } catch (btnError) {
+                console.error(`Buton işleme hatası (${interaction.customId}):`, btnError);
+                await safeReply(interaction, 'Buton işlenirken bir hata oluştu!');
+            }
+        }
+        else if (interaction.isStringSelectMenu()) {
+            try {
+                // Önce doğrudan eşleşme kontrolü
+                const selectMenu = client.selectMenus.get(interaction.customId);
+                
+                if (selectMenu) {
+                    await selectMenu.execute(interaction);
+                    return;
+                }
+                
+                // Sonra regex eşleşmeleri kontrolü
+                for (const [key, handler] of regexHandlers.entries()) {
+                    if (handler.type === 'selectMenu' && handler.regex.test(interaction.customId)) {
+                        await handler.execute(interaction);
+                        return;
+                    }
+                }
+                
+                console.log(`Uygun select menu işleyici bulunamadı: ${interaction.customId}`);
+            } catch (selectError) {
+                console.error(`Select menu işleme hatası (${interaction.customId}):`, selectError);
+                await safeReply(interaction, 'Select menu işlenirken bir hata oluştu!');
+            }
+        }
+        else if (interaction.isModalSubmit()) {
+            try {
+                // Önce doğrudan eşleşme kontrolü
+                const modal = client.modals.get(interaction.customId);
+                
+                if (modal) {
+                    await modal.execute(interaction);
+                    return;
+                }
+                
+                // Sonra regex eşleşmeleri kontrolü
+                for (const [key, handler] of regexHandlers.entries()) {
+                    if (handler.type === 'modal' && handler.regex.test(interaction.customId)) {
+                        await handler.execute(interaction);
+                        return;
+                    }
+                }
+                
+                console.log(`Uygun modal işleyici bulunamadı: ${interaction.customId}`);
+            } catch (modalError) {
+                console.error(`Modal işleme hatası (${interaction.customId}):`, modalError);
+                await safeReply(interaction, 'Form işlenirken bir hata oluştu!');
+            }
+        }
+    } catch (globalError) {
+        console.error('Global interaction işleme hatası:', globalError);
+    }
+});
+
+// Güvenli yanıt fonksiyonu
+async function safeReply(interaction, content) {
+    try {
+        if (!interaction.replied && !interaction.deferred) {
+            // Henüz yanıt verilmemiş ve askıya alınmamış
+            await interaction.reply({
+                content: content,
+                ephemeral: true
+            });
+        } else if (interaction.deferred && !interaction.replied) {
+            // Askıya alınmış ama henüz yanıt verilmemiş
+            await interaction.editReply({
+                content: content
+            });
+        } else {
+            // Zaten yanıt verilmiş
+            await interaction.followUp({
+                content: content,
+                ephemeral: true
+            });
+        }
+    } catch (error) {
+        console.error('Yanıt gönderme hatası:', error);
+    }
+}
 
 // Botu başlat
 startBot();

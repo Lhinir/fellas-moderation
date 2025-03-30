@@ -97,19 +97,22 @@ function initializeDatabase() {
 }
 
 // Promisify run
+// run fonksiyonunu iyileştir
 function run(sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-            if (err) {
-                console.error('SQL Error:', err);
-                reject(err);
-            } else {
-                resolve({ lastID: this.lastID, changes: this.changes });
-            }
-        });
-    });
+  return new Promise((resolve, reject) => {
+      db.run(sql, params, function (err) {
+          if (err) {
+              // Detaylı hata bilgisi
+              console.error('SQL Error:', sql);
+              console.error('Parameters:', params);
+              console.error('Error details:', err);
+              reject(err);
+          } else {
+              resolve({ lastID: this.lastID, changes: this.changes });
+          }
+      });
+  });
 }
-
 // Promisify get
 function get(sql, params = []) {
     return new Promise((resolve, reject) => {
