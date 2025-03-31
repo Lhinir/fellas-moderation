@@ -95,6 +95,7 @@ module.exports = {
         });
         
         // Toplu mesaj silme
+        /*
         client.on(Events.MessageBulkDelete, async messages => {
             if (messages.size === 0) return;
             const firstMessage = messages.first();
@@ -117,6 +118,7 @@ module.exports = {
                 console.error('Toplu mesaj silme log hatası:', error);
             }
         });
+        */
         
         console.log('Mesaj log dinleyicileri başlatıldı!');
     }
