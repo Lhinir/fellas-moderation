@@ -78,7 +78,7 @@ module.exports = {
                         .setEmoji('◀️')
                 );
                 
-            await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+            await interaction.update({ embeds: [embed], components: [row1] });
         } catch (error) {
             console.error('Link koruma panel hatası:', error);
             await interaction.reply({ content: 'Link koruma ayarları yüklenirken bir hata oluştu.', ephemeral: true });

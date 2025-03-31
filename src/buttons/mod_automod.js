@@ -49,22 +49,7 @@ module.exports = {
                         .setStyle(spamProtection ? ButtonStyle.Danger : ButtonStyle.Success)
                         .setEmoji('🚫')
                 );
-                
             const row2 = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('automod_words')
-                        .setLabel('Yasaklı Kelimeler')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('📝'),
-                    new ButtonBuilder()
-                        .setCustomId('automod_settings')
-                        .setLabel('Spam Ayarları')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('⚙️')
-                );
-                
-            const row3 = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('panel_moderation')
@@ -73,7 +58,7 @@ module.exports = {
                         .setEmoji('◀️')
                 );
                 
-            await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+            await interaction.update({ embeds: [embed], components: [row1, row2] });
         } catch (error) {
             console.error('AutoMod panel hatası:', error);
             await interaction.reply({ content: 'AutoMod ayarları yüklenirken bir hata oluştu.', ephemeral: true });
