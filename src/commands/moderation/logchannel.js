@@ -1,5 +1,5 @@
 // src/commands/moderation/logchannel.js
-
+/*
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
 
@@ -136,3 +136,4 @@ module.exports = {
         }
     }
 };
+*/
