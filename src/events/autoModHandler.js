@@ -133,19 +133,36 @@ module.exports = {
                 
                 console.log(`[AutoMod] Timeout süresi: ${timeoutMinutes} dakika (Seviye ${spamLevel})`);
                 
-                // Kullanıcıyı sustur
-                try {
-                    const member = await message.guild.members.fetch(userId);
-                    
-                    if (member && member.moderatable) {
-                        await member.timeout(timeoutMs, `AutoMod: Spam yapma (${spamLevel}. ihlal)`);
-                        console.log(`[AutoMod] ${message.author.tag} kullanıcısı ${timeoutMinutes} dakika susturuldu.`);
-                    } else {
-                        console.log(`[AutoMod] Kullanıcı susturulamadı: Kullanıcı moderatable değil.`);
-                    }
-                } catch (timeoutError) {
-                    console.error('[AutoMod] Susturma hatası:', timeoutError);
-                }
+               // Kullanıcıyı sustur
+try {
+    const member = await message.guild.members.fetch(userId);
+    
+    if (member && member.moderatable) {
+        await member.timeout(timeoutMs, `AutoMod: Spam yapma (${spamLevel}. ihlal)`);
+        console.log(`[AutoMod] ${message.author.tag} kullanıcısı ${timeoutMinutes} dakika susturuldu.`);
+        
+        // YENI: Spam için warnings tablosuna otomatik uyarı ekle
+        try {
+            await database.run(
+                'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, automated) VALUES (?, ?, ?, ?, ?)',
+                [
+                    guildId, 
+                    userId, 
+                    message.client.user.id, // Bot'un ID'si
+                    `Spam yapma (Otomatik Tespit) - ${spamLevel}. ihlal - ${timeoutMinutes} dakika susturuldu`, 
+                    1 // Otomatik oluşturulan uyarı
+                ]
+            );
+            console.log(`[AutoMod] Kullanıcıya otomatik uyarı eklendi: ${message.author.tag}`);
+        } catch (warnError) {
+            console.error('[AutoMod] Otomatik uyarı ekleme hatası:', warnError);
+        }
+    } else {
+        console.log(`[AutoMod] Kullanıcı susturulamadı: Kullanıcı moderatable değil.`);
+    }
+} catch (timeoutError) {
+    console.error('[AutoMod] Susturma hatası:', timeoutError);
+}
                 
                 // ÖNEMLİ: SPAM YAPILAN KANALDAN KULLANICININ SON 8 MESAJINI SİL
                 let deletedCount = 0;
