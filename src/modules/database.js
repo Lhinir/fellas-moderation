@@ -1,4 +1,4 @@
-// src/modules/database.js (genişletilmiş)
+// src/modules/database.js - Güncellenmiş versiyon
 
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
@@ -8,146 +8,133 @@ const fs = require('fs');
 const dbFolder = path.join(process.cwd(), 'data');
 const dbFile = path.join(dbFolder, 'fellas.db');
 
-// Veritabanı klasörünün var olduğundan emin ol
-if (!fs.existsSync(dbFolder)) {
-    fs.mkdirSync(dbFolder, { recursive: true });
-}
+// Veritabanı bağlantısı
+let db;
 
-// Veritabanı bağlantısını oluştur
-const db = new sqlite3.Database(dbFile, (err) => {
-    if (err) {
-        console.error('Veritabanı bağlantı hatası:', err.message);
-    } else {
-        console.log('Veritabanına bağlanıldı.');
-    }
-});
-
-// Tabloları oluştur/güncelle
-function initializeDatabase() {
+// Veritabanını başlat
+async function initialize() {
     return new Promise((resolve, reject) => {
-        console.log('Veritabanı tabloları hazırlanıyor...');
+        // Klasörün var olduğundan emin ol
+        if (!fs.existsSync(dbFolder)) {
+            fs.mkdirSync(dbFolder, { recursive: true });
+        }
         
-        // Tablolar için SQL komutları
-        const tables = [
-            // Guild ayarları tablosu
-            `CREATE TABLE IF NOT EXISTS guild_settings (
-                guild_id TEXT PRIMARY KEY,
-                prefix TEXT DEFAULT '!',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`,
+        // Bağlantıyı oluştur
+        db = new sqlite3.Database(dbFile, (err) => {
+            if (err) {
+                console.error('Veritabanı bağlantı hatası:', err.message);
+                reject(err);
+                return;
+            }
             
-            // Log kanalları tablosu
-            `CREATE TABLE IF NOT EXISTS log_channels (
-                guild_id TEXT,
-                type TEXT,
-                channel_id TEXT,
-                PRIMARY KEY (guild_id, type),
-                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
-            )`,
+            console.log('SQLite veritabanına bağlanıldı.');
             
-            // Uyarılar tablosu
-            `CREATE TABLE IF NOT EXISTS warnings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT,
-                user_id TEXT,
-                moderator_id TEXT,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
-            )`,
-            
-            // Moderasyon kayıtları tablosu (ban, kick, mute vb.)
-            `CREATE TABLE IF NOT EXISTS mod_actions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT,
-                user_id TEXT,
-                moderator_id TEXT,
-                action_type TEXT,
-                reason TEXT,
-                duration TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
-            )`
-        ];
-        
-        // Sequential execution of table creation
-        db.serialize(() => {
-            db.run('PRAGMA foreign_keys = ON');
-            
-            const promises = tables.map(sql => {
-                return new Promise((res, rej) => {
-                    db.run(sql, (err) => {
-                        if (err) rej(err);
-                        else res();
-                    });
-                });
+            // Foreign keys'i aktifleştir
+            db.run('PRAGMA foreign_keys = ON;', (pragmaErr) => {
+                if (pragmaErr) {
+                    console.error('PRAGMA ayarı hatası:', pragmaErr);
+                }
+                resolve();
             });
-            
-            Promise.all(promises)
-                .then(() => {
-                    console.log('Veritabanı tabloları hazır.');
-                    resolve();
-                })
-                .catch(err => {
-                    console.error('Tablo oluşturma hatası:', err);
-                    reject(err);
-                });
         });
     });
 }
 
-// Promisify run
-// run fonksiyonunu iyileştir
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-      db.run(sql, params, function (err) {
-          if (err) {
-              // Detaylı hata bilgisi
-              console.error('SQL Error:', sql);
-              console.error('Parameters:', params);
-              console.error('Error details:', err);
-              reject(err);
-          } else {
-              resolve({ lastID: this.lastID, changes: this.changes });
-          }
-      });
-  });
+// Veritabanını kapat
+function close() {
+    return new Promise((resolve, reject) => {
+        if (db) {
+            db.close((err) => {
+                if (err) {
+                    console.error('Veritabanı kapatma hatası:', err.message);
+                    reject(err);
+                    return;
+                }
+                console.log('Veritabanı bağlantısı kapatıldı.');
+                resolve();
+            });
+        } else {
+            resolve();
+        }
+    });
 }
-// Promisify get
+
+// Promise tabanlı run
+function run(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) {
+                console.error('SQL Error:', sql);
+                console.error('Parameters:', params);
+                console.error('Error details:', err);
+                reject(err);
+                return;
+            }
+            resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+}
+
+// Promise tabanlı get
 function get(sql, params = []) {
     return new Promise((resolve, reject) => {
         db.get(sql, params, (err, row) => {
             if (err) {
-                console.error('SQL Error:', err);
+                console.error('SQL Error:', sql);
+                console.error('Parameters:', params);
+                console.error('Error details:', err);
                 reject(err);
-            } else {
-                resolve(row);
+                return;
             }
+            resolve(row);
         });
     });
 }
 
-// Promisify all
+// Promise tabanlı all
 function all(sql, params = []) {
     return new Promise((resolve, reject) => {
         db.all(sql, params, (err, rows) => {
             if (err) {
-                console.error('SQL Error:', err);
+                console.error('SQL Error:', sql);
+                console.error('Parameters:', params);
+                console.error('Error details:', err);
                 reject(err);
-            } else {
-                resolve(rows);
+                return;
             }
+            resolve(rows);
         });
     });
 }
 
-// Log kanalları işlemleri
+// Guild işlemleri
+const guilds = {
+    // Bir guild'i kur veya kontrol et
+    setupGuild: async (guildId) => {
+        const result = await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
+        return { guildId, changes: result.changes };
+    },
+    
+    // Guild prefix'ini al
+    getPrefix: async (guildId) => {
+        const result = await get('SELECT prefix FROM guild_settings WHERE guild_id = ?', [guildId]);
+        return result ? result.prefix : '!';
+    },
+    
+    // Guild prefix'ini ayarla
+    setPrefix: async (guildId, prefix) => {
+        return run('UPDATE guild_settings SET prefix = ? WHERE guild_id = ?', [prefix, guildId]);
+    }
+};
+
+// Log kanalı işlemleri
 const logs = {
     // Log kanalı ayarla
     setLogChannel: async (guildId, type, channelId) => {
-        // Önce guild_settings tablosunda guild_id'nin var olduğundan emin ol
-        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
-        // Log kanalını ayarla
+        // Guild'in var olduğundan emin ol
+        await guilds.setupGuild(guildId);
+        
+        // Log kanalını ayarla veya güncelle
         return run(
             'INSERT OR REPLACE INTO log_channels (guild_id, type, channel_id) VALUES (?, ?, ?)',
             [guildId, type, channelId]
@@ -156,11 +143,12 @@ const logs = {
     
     // Log kanalını getir
     getLogChannel: async (guildId, type) => {
-        const row = await get(
+        const result = await get(
             'SELECT channel_id FROM log_channels WHERE guild_id = ? AND type = ?',
             [guildId, type]
         );
-        return row ? row.channel_id : null;
+        
+        return result ? result.channel_id : null;
     },
     
     // Tüm log kanallarını getir
@@ -171,7 +159,7 @@ const logs = {
         );
     },
     
-    // Log kanalı ayarını sil
+    // Log kanalını sil
     deleteLogChannel: async (guildId, type) => {
         return run(
             'DELETE FROM log_channels WHERE guild_id = ? AND type = ?',
@@ -180,52 +168,18 @@ const logs = {
     }
 };
 
-// Guild ayarları işlemleri
-const guilds = {
-    // Guild'i oluştur/kontrol et
-    setupGuild: async (guildId) => {
-        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
-        return { guildId };
-    },
-    
-    // Prefix ayarla
-    setPrefix: async (guildId, prefix) => {
-        await run('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', [guildId]);
-        return run(
-            'UPDATE guild_settings SET prefix = ? WHERE guild_id = ?',
-            [prefix, guildId]
-        );
-    },
-    
-    // Prefix getir
-    getPrefix: async (guildId) => {
-        const row = await get(
-            'SELECT prefix FROM guild_settings WHERE guild_id = ?',
-            [guildId]
-        );
-        return row ? row.prefix : '!';
-    },
-    
-    // Guild'i sil
-    deleteGuild: async (guildId) => {
-        return run('DELETE FROM guild_settings WHERE guild_id = ?', [guildId]);
-    },
-    
-    // Tüm guild'leri getir
-    getAllGuilds: async () => {
-        return all('SELECT * FROM guild_settings');
-    }
-};
-
 // Uyarı işlemleri
 const warnings = {
     // Uyarı ekle
-    addWarning: async (guildId, userId, moderatorId, reason) => {
+    addWarning: async (guildId, userId, moderatorId, reason, automated = 0) => {
+        // Guild'in var olduğundan emin ol
         await guilds.setupGuild(guildId);
+        
         const result = await run(
-            'INSERT INTO warnings (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)',
-            [guildId, userId, moderatorId, reason]
+            'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, automated) VALUES (?, ?, ?, ?, ?)',
+            [guildId, userId, moderatorId, reason, automated]
         );
+        
         return result.lastID;
     },
     
@@ -237,13 +191,21 @@ const warnings = {
         );
     },
     
+    // Otomatik uyarıları getir
+    getAutomatedWarnings: async (guildId, userId) => {
+        return all(
+            'SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? AND automated = 1 ORDER BY created_at DESC',
+            [guildId, userId]
+        );
+    },
+    
     // Uyarı sayısını getir
     getWarningCount: async (guildId, userId) => {
-        const row = await get(
+        const result = await get(
             'SELECT COUNT(*) as count FROM warnings WHERE guild_id = ? AND user_id = ?',
             [guildId, userId]
         );
-        return row ? row.count : 0;
+        return result ? result.count : 0;
     },
     
     // Belirli bir uyarıyı sil
@@ -260,22 +222,33 @@ const warnings = {
             'DELETE FROM warnings WHERE guild_id = ? AND user_id = ?',
             [guildId, userId]
         );
+    },
+    
+    // Kullanıcının otomatik uyarılarını temizle
+    clearAutomatedWarnings: async (guildId, userId) => {
+        return run(
+            'DELETE FROM warnings WHERE guild_id = ? AND user_id = ? AND automated = 1',
+            [guildId, userId]
+        );
     }
 };
 
-// Moderasyon kaydı işlemleri
+// Moderasyon işlemleri
 const modActions = {
-    // Moderasyon kaydı ekle (ban, kick, mute vb.)
+    // Moderasyon işlemi ekle
     addAction: async (guildId, userId, moderatorId, actionType, reason, duration = null) => {
+        // Guild'in var olduğundan emin ol
         await guilds.setupGuild(guildId);
+        
         const result = await run(
             'INSERT INTO mod_actions (guild_id, user_id, moderator_id, action_type, reason, duration) VALUES (?, ?, ?, ?, ?, ?)',
             [guildId, userId, moderatorId, actionType, reason, duration]
         );
+        
         return result.lastID;
     },
     
-    // Kullanıcının moderasyon kayıtlarını getir
+    // Kullanıcı işlemlerini getir
     getUserActions: async (guildId, userId) => {
         return all(
             'SELECT * FROM mod_actions WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC',
@@ -283,73 +256,23 @@ const modActions = {
         );
     },
     
-    // Belirli türdeki moderasyon kayıtlarını getir
+    // Belirli türdeki işlemleri getir
     getActionsByType: async (guildId, actionType) => {
         return all(
             'SELECT * FROM mod_actions WHERE guild_id = ? AND action_type = ? ORDER BY created_at DESC',
             [guildId, actionType]
         );
-    },
-    
-    // Belirli moderatörün işlemlerini getir
-    getModeratorActions: async (guildId, moderatorId) => {
-        return all(
-            'SELECT * FROM mod_actions WHERE guild_id = ? AND moderator_id = ? ORDER BY created_at DESC',
-            [guildId, moderatorId]
-        );
     }
 };
 
-// Helper functions
-const utils = {
-    // SQLite LIKE için karakterleri escape et
-    escapeLike: (str) => str.replace(/[%_]/g, char => `\\${char}`),
-    
-    // Veritabanından verileri yedekle
-    backupDatabase: async () => {
-        const backupPath = path.join(dbFolder, `backup_${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
-        return new Promise((resolve, reject) => {
-            const backup = fs.createWriteStream(backupPath);
-            const source = fs.createReadStream(dbFile);
-            
-            source.pipe(backup);
-            source.on('end', () => {
-                console.log(`Veritabanı ${backupPath} adresine yedeklendi.`);
-                resolve(backupPath);
-            });
-            source.on('error', (err) => {
-                console.error('Yedekleme hatası:', err);
-                reject(err);
-            });
-        });
-    }
-};
-
-// Module exports
 module.exports = {
-    db,
-    initialize: initializeDatabase,
+    initialize,
+    close,
     run,
     get,
     all,
-    logs,
     guilds,
+    logs,
     warnings,
-    modActions,
-    utils,
-    
-    // Close database connection
-    close: () => {
-        return new Promise((resolve, reject) => {
-            db.close((err) => {
-                if (err) {
-                    console.error('Veritabanını kapatma hatası:', err.message);
-                    reject(err);
-                } else {
-                    console.log('Veritabanı bağlantısı kapatıldı.');
-                    resolve();
-                }
-            });
-        });
-    }
+    modActions
 };

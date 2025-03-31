@@ -1,3 +1,5 @@
+// src/commands/moderation/resetspam.js
+
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const database = require('../../modules/database');
 
@@ -17,12 +19,11 @@ module.exports = {
     
     async execute(interaction) {
         try {
+            await interaction.deferReply();
+            
             // Yetkiyi kontrol et
             if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-                return interaction.reply({ 
-                    content: 'Bu komutu kullanmak için **Üyeleri Yönet** yetkisine sahip olmalısın!',
-                    ephemeral: true
-                });
+                return interaction.editReply('Bu komutu kullanmak için **Üyeleri Yönet** yetkisine sahip olmalısın!');
             }
 
             const user = interaction.options.getUser('user');
@@ -35,10 +36,7 @@ module.exports = {
             );
             
             if (!spamHistory) {
-                return interaction.reply({
-                    content: `**${user.tag}** adlı kullanıcının spam geçmişi bulunamadı.`,
-                    ephemeral: true
-                });
+                return interaction.editReply(`**${user.tag}** adlı kullanıcının spam geçmişi bulunamadı.`);
             }
             
             const currentLevel = spamHistory.spam_count;
@@ -50,15 +48,9 @@ module.exports = {
             );
             
             // Otomatik uyarıları temizle
-            await database.run(
-                'DELETE FROM warnings WHERE guild_id = ? AND user_id = ? AND automated = 1',
-                [interaction.guild.id, user.id]
-            );
+            await database.warnings.clearAutomatedWarnings(interaction.guild.id, user.id);
             
-            await interaction.reply({
-                content: `**${user.tag}** adlı kullanıcının spam seviyesi sıfırlandı. (Önceki seviye: ${currentLevel})`,
-                ephemeral: false
-            });
+            await interaction.editReply(`**${user.tag}** adlı kullanıcının spam seviyesi sıfırlandı. (Önceki seviye: ${currentLevel})`);
             
             // Log gönder
             try {
@@ -88,10 +80,7 @@ module.exports = {
             }
         } catch (error) {
             console.error('Reset spam komutu hatası:', error);
-            await interaction.reply({ 
-                content: 'Komut çalıştırılırken bir hata oluştu!',
-                ephemeral: true
-            });
+            await interaction.editReply('Komut çalıştırılırken bir hata oluştu!');
         }
     }
 };

@@ -134,16 +134,16 @@ module.exports = {
                 console.log(`[AutoMod] Timeout süresi: ${timeoutMinutes} dakika (Seviye ${spamLevel})`);
                 
                // Kullanıcıyı sustur
-try {
-    const member = await message.guild.members.fetch(userId);
+                try {
+                    const member = await message.guild.members.fetch(userId);
     
-    if (member && member.moderatable) {
-        await member.timeout(timeoutMs, `AutoMod: Spam yapma (${spamLevel}. ihlal)`);
-        console.log(`[AutoMod] ${message.author.tag} kullanıcısı ${timeoutMinutes} dakika susturuldu.`);
+                    if (member && member.moderatable) {
+                    await member.timeout(timeoutMs, `AutoMod: Spam yapma (${spamLevel}. ihlal)`);
+                    console.log(`[AutoMod] ${message.author.tag} kullanıcısı ${timeoutMinutes} dakika susturuldu.`);
         
-        // YENI: Spam için warnings tablosuna otomatik uyarı ekle
-        try {
-            await database.run(
+                // YENI: Spam için warnings tablosuna otomatik uyarı ekle
+                    try {
+                    await database.run(
                 'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, automated) VALUES (?, ?, ?, ?, ?)',
                 [
                     guildId, 
@@ -154,22 +154,22 @@ try {
                 ]
             );
             console.log(`[AutoMod] Kullanıcıya otomatik uyarı eklendi: ${message.author.tag}`);
-        } catch (warnError) {
+            } catch (warnError) {
             console.error('[AutoMod] Otomatik uyarı ekleme hatası:', warnError);
-        }
-    } else {
-        console.log(`[AutoMod] Kullanıcı susturulamadı: Kullanıcı moderatable değil.`);
-    }
-} catch (timeoutError) {
-    console.error('[AutoMod] Susturma hatası:', timeoutError);
-}
+            }
+            } else {
+                console.log(`[AutoMod] Kullanıcı susturulamadı: Kullanıcı moderatable değil.`);
+            }
+            } catch (timeoutError) {
+                console.error('[AutoMod] Susturma hatası:', timeoutError);
+            }
                 
                 // ÖNEMLİ: SPAM YAPILAN KANALDAN KULLANICININ SON 8 MESAJINI SİL
                 let deletedCount = 0;
                 try {
                     console.log(`[AutoMod] Kullanıcının mesajları siliniyor: Kanal ID ${channelId}`);
                     
-                    // Son 20 mesajı getir (Discord API limiti 100, ama verimlilik için 20 yeterli)
+                    // Son 20 mesajı getir (Discord API limiti 100, ama verimlilik için 20 yeterliF)
                     const fetchedMessages = await message.channel.messages.fetch({ limit: 20 });
                     console.log(`[AutoMod] Kanaldan ${fetchedMessages.size} mesaj yüklendi.`);
                     
@@ -214,28 +214,48 @@ try {
                 }
                 
                 // Spam geçmişini güncelle
-                try {
-                    const resetAfter = new Date(now + 24 * 60 * 60 * 1000); // 24 saat sonra sıfırla
-                    
-                    if (spamHistory) {
-                        // Mevcut kaydı güncelle
-                        await database.run(
-                            'UPDATE spam_history SET spam_count = ?, last_spam_time = CURRENT_TIMESTAMP, reset_after = ? WHERE guild_id = ? AND user_id = ?',
-                            [spamLevel, resetAfter.toISOString(), guildId, userId]
-                        );
-                    } else {
-                        // Yeni kayıt oluştur
-                        await database.run(
-                            'INSERT INTO spam_history (guild_id, user_id, spam_count, reset_after) VALUES (?, ?, ?, ?)',
-                            [guildId, userId, spamLevel, resetAfter.toISOString()]
-                        );
+                // Spam geçmişini güncelle
+                    try {
+                        const resetAfter = new Date(now + 24 * 60 * 60 * 1000); // 24 saat sonra sıfırla
+                        
+                        if (spamHistory) {
+                            // Mevcut kaydı güncelle
+                            await database.run(
+                                'UPDATE spam_history SET spam_count = ?, last_spam_time = CURRENT_TIMESTAMP, reset_after = ? WHERE guild_id = ? AND user_id = ?',
+                                [spamLevel, resetAfter.toISOString(), guildId, userId]
+                            );
+                            console.log(`[AutoMod] Spam geçmişi güncellendi. Seviye: ${spamLevel}`);
+                        } else {
+                            // Yeni kayıt oluştur (INSERT OR REPLACE kullan)
+                            await database.run(
+                                'INSERT OR REPLACE INTO spam_history (guild_id, user_id, spam_count, reset_after) VALUES (?, ?, ?, ?)',
+                                [guildId, userId, spamLevel, resetAfter.toISOString()]
+                            );
+                            console.log(`[AutoMod] Yeni spam geçmişi oluşturuldu. Seviye: ${spamLevel}`);
+                        }
+                    } catch (updateError) {
+                        console.error('[AutoMod] Spam geçmişi güncelleme hatası:', updateError);
+                        
+                        // Hata durumunda alternatif bir strateji dene
+                        try {
+                            console.log('[AutoMod] Alternatif güncelleme stratejisi deneniyor...');
+                            // Önce var olan kaydı silmeyi dene
+                            await database.run(
+                                'DELETE FROM spam_history WHERE guild_id = ? AND user_id = ?',
+                                [guildId, userId]
+                            );
+                            
+                            // Sonra yeni kayıt oluştur
+                            await database.run(
+                                'INSERT INTO spam_history (guild_id, user_id, spam_count, reset_after) VALUES (?, ?, ?, ?)',
+                                [guildId, userId, spamLevel, resetAfter.toISOString()]
+                            );
+                            console.log('[AutoMod] Alternatif güncelleme başarılı.');
+                        } catch (altError) {
+                            console.error('[AutoMod] Alternatif güncelleme de başarısız:', altError);
+                            // Kritik olmayan hata, devam et
+                        }
                     }
-                    
-                    console.log(`[AutoMod] Spam geçmişi güncellendi. Seviye: ${spamLevel}`);
-                } catch (updateError) {
-                    console.error('[AutoMod] Spam geçmişi güncelleme hatası:', updateError);
-                    // Kritik olmayan hata, devam et
-                }
                 
                 // Kullanıcıya uyarı mesajı gönder
                 try {

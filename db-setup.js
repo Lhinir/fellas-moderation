@@ -70,11 +70,12 @@ async function setupDatabase() {
         console.log('✅ log_channels tablosu oluşturuldu');
         
         // warnings tablosu - Kullanıcı uyarıları
+        /*
         await runSQL(`
             ALTER TABLE warnings ADD COLUMN automated INTEGER DEFAULT 0
         `);
         console.log('✅ warnings tablosu oluşturuldu');
-        
+        */
         // mod_actions tablosu - Moderasyon işlemleri
         await runSQL(`
             CREATE TABLE IF NOT EXISTS mod_actions (
@@ -108,6 +109,7 @@ async function setupDatabase() {
         `);
         console.log('✅ automod_configs tablosu oluşturuldu');
         
+
         // spam_history tablosu - Spam yapan kullanıcıların geçmişi
         await runSQL(`
             CREATE TABLE IF NOT EXISTS spam_history (
