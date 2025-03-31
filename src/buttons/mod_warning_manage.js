@@ -1,5 +1,15 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const database = require('../modules/database');
+// src/buttons/mod_warning_manage.js
+
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
+
+// Discord.js ButtonStyle enum değerleri yerine doğrudan sayısal değerleri kullanmak
+const ButtonStyle = {
+    PRIMARY: 1,   // Mavi
+    SECONDARY: 2, // Gri
+    SUCCESS: 3,   // Yeşil
+    DANGER: 4,    // Kırmızı
+    LINK: 5       // URL Link
+};
 
 module.exports = {
     customId: 'mod_warning_manage',
@@ -31,7 +41,7 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_panel_back')
                         .setLabel('Panele Dön')
-                        .setStyle(ButtonStyle.Secondary)
+                        .setStyle(ButtonStyle.SECONDARY) // Sayısal değer 2
                         .setEmoji('⬅️')
                 );
             

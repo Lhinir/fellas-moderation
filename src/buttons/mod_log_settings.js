@@ -1,5 +1,15 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const database = require('../modules/database');
+// src/buttons/mod_log_settings.js
+
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
+
+// Discord.js ButtonStyle enum değerleri yerine doğrudan sayısal değerleri kullanmak
+const ButtonStyle = {
+    PRIMARY: 1,   // Mavi
+    SECONDARY: 2, // Gri
+    SUCCESS: 3,   // Yeşil
+    DANGER: 4,    // Kırmızı
+    LINK: 5       // URL Link
+};
 
 module.exports = {
     customId: 'mod_log_settings',
@@ -15,7 +25,15 @@ module.exports = {
         
         try {
             // Mevcut log ayarlarını getir
-            const logChannels = await database.logs.getAllLogChannels(interaction.guild.id);
+            const database = require('../../modules/database');
+            let logChannels = [];
+            
+            try {
+                logChannels = await database.logs.getAllLogChannels(interaction.guild.id);
+            } catch (dbError) {
+                console.error('Log kanalları getirme hatası:', dbError);
+                // Hata durumunda boş array ile devam et
+            }
             
             // Embed oluştur
             const embed = new EmbedBuilder()
@@ -47,7 +65,7 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_panel_back')
                         .setLabel('Panele Dön')
-                        .setStyle(ButtonStyle.Secondary)
+                        .setStyle(ButtonStyle.SECONDARY) // Sayısal değer 2
                         .setEmoji('⬅️')
                 );
             

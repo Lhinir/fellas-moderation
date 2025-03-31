@@ -3,61 +3,64 @@
 const { EmbedBuilder } = require('discord.js');
 const database = require('./database');
 
-/**
- * Genel log gönderme fonksiyonu
- * @param {Object} guild - Discord Guild nesnesi
- * @param {String} type - Log türü (server, moderation, message, member, voice, audit)
- * @param {Object} embedData - Gönderilecek embed verisi
- */
-async function sendLog(guild, type, embedData) {
+async function sendLog(guild, type, description, options = {}) {
     try {
-        // Log kanalı ID'sini al
-        const logChannels = await database.get(
-            'SELECT channel_id FROM log_channels WHERE guild_id = ? AND type = ?',
-            [guild.id, type]
-        );
-        
-        if (!logChannels || !logChannels.channel_id) return false;
-        
-        const logChannelId = logChannels.channel_id;
-        
-        // Log kanalına eriş
+        // Log kanalını al
+        const logChannelId = await database.logs.getLogChannel(guild.id, type);
+        if (!logChannelId) return;
+
         const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
-        if (!logChannel) return false;
-        
-        // Embed'i oluştur
+        if (!logChannel) return;
+
+        // Eğer description bir nesne ise (eski versiyon uyumluluğu için)
+        // bu nesneyi options'a taşı ve description'ı belirlenen değere ayarla
+        if (typeof description === 'object' && description !== null) {
+            options = { ...description, ...options };
+            description = options.description || 'Log kaydı oluşturuldu.';
+        }
+
+        // Description boş string olarak gelirse, varsayılan değer ver
+        if (description === '') {
+            description = 'Log kaydı oluşturuldu.';
+        }
+
         const embed = new EmbedBuilder()
-            .setColor(embedData.color || '#0099ff')
-            .setTitle(embedData.title || 'Log')
-            .setDescription(embedData.description || '')
-            .setTimestamp();
+            .setColor(options.color || '#3498db')
+            .setTitle(options.title || `${type.charAt(0).toUpperCase() + type.slice(1)} Log`);
         
-        // Opsiyonel alanları ekle
-        if (embedData.fields && embedData.fields.length > 0) {
-            embed.addFields(...embedData.fields);
+        // Description ayarla
+        embed.setDescription(description);
+
+        // Ek alanlar
+        if (options.fields && Array.isArray(options.fields)) {
+            for (const field of options.fields) {
+                if (field.name && field.value) {
+                    embed.addFields({ name: field.name, value: field.value, inline: field.inline || false });
+                }
+            }
         }
-        
-        if (embedData.thumbnail) {
-            embed.setThumbnail(embedData.thumbnail);
+
+        // Footer ve timestamp
+        if (options.footer) {
+            embed.setFooter({ text: options.footer });
         }
-        
-        if (embedData.image) {
-            embed.setImage(embedData.image);
+
+        if (options.timestamp) {
+            embed.setTimestamp(options.timestamp);
+        } else {
+            embed.setTimestamp();
         }
-        
-        if (embedData.author) {
-            embed.setAuthor(embedData.author);
+
+        // Thumbnail
+        if (options.thumbnail) {
+            embed.setThumbnail(options.thumbnail);
         }
-        
-        if (embedData.footer) {
-            embed.setFooter(embedData.footer);
-        }
-        
-        // Log gönder
+
+        // Logu gönder
         await logChannel.send({ embeds: [embed] });
         return true;
     } catch (error) {
-        console.error(`${type} log gönderme hatası:`, error);
+        console.error('Log gönderme hatası:', error);
         return false;
     }
 }

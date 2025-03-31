@@ -43,7 +43,7 @@ module.exports = {
                     fields.push({ name: 'Dosyalar', value: attachments });
                 }
                 
-                await logEvents.sendLog(message.guild, 'message', {
+                await logEvents.sendLog(guild, 'message', 'Bir mesaj silindi.', {
                     color: '#ff0000',
                     title: '🗑️ Mesaj Silindi',
                     fields: fields,
@@ -100,10 +100,9 @@ module.exports = {
             try {
                 const channel = firstMessage.channel;
                 
-                await logEvents.sendLog(firstMessage.guild, 'message', {
+                await logEvents.sendLog(guild, 'message', `**${count}** mesaj <#${channel.id}> kanalında silindi.`, {
                     color: '#ff0000',
                     title: '🗑️ Toplu Mesaj Silindi',
-                    description: `**${messages.size}** mesaj <#${channel.id}> kanalında silindi.`,
                     fields: [
                         { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
                         { name: 'Mesaj Sayısı', value: messages.size.toString(), inline: true }

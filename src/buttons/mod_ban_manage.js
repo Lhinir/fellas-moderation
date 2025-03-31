@@ -1,4 +1,15 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+// src/buttons/mod_ban_manage.js
+
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
+
+// Discord.js ButtonStyle enum değerleri yerine doğrudan sayısal değerleri kullanmak
+const ButtonStyle = {
+    PRIMARY: 1,   // Mavi
+    SECONDARY: 2, // Gri
+    SUCCESS: 3,   // Yeşil
+    DANGER: 4,    // Kırmızı
+    LINK: 5       // URL Link
+};
 
 module.exports = {
     customId: 'mod_ban_manage',
@@ -32,13 +43,17 @@ module.exports = {
                 .setTimestamp();
             
             // Yasaklı kullanıcıları listele (ilk 25 kişi)
-            const banList = bans.map((ban, index) => {
-                if (index < 25) { // Discord embed sınırlaması nedeniyle sadece 25 gösterilecek
-                    return `${index + 1}. **${ban.user.tag}** (${ban.user.id})\n📝 Sebep: ${ban.reason || 'Sebep belirtilmedi'}`;
-                }
-            }).join('\n\n');
+            const banList = [];
+            let count = 0;
             
-            embed.addFields({ name: 'Yasaklı Kullanıcı Listesi', value: banList || 'Listelenecek yasaklı kullanıcı yok' });
+            bans.forEach(ban => {
+                if (count < 25) { // Discord embed sınırlaması nedeniyle sadece 25 gösterilecek
+                    count++;
+                    banList.push(`${count}. **${ban.user.tag}** (${ban.user.id})\n📝 Sebep: ${ban.reason || 'Sebep belirtilmedi'}`);
+                }
+            });
+            
+            embed.addFields({ name: 'Yasaklı Kullanıcı Listesi', value: banList.join('\n\n') || 'Listelenecek yasaklı kullanıcı yok' });
             
             if (bans.size > 25) {
                 embed.addFields({ name: 'Not', value: `Toplamda ${bans.size} yasaklı kullanıcı var, sadece ilk 25 gösteriliyor.` });
@@ -50,7 +65,7 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_panel_back')
                         .setLabel('Panele Dön')
-                        .setStyle(ButtonStyle.Secondary)
+                        .setStyle(ButtonStyle.SECONDARY) // Sayısal değer 2
                         .setEmoji('⬅️')
                 );
             
