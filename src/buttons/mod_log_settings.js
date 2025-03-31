@@ -25,7 +25,7 @@ module.exports = {
         
         try {
             // Mevcut log ayarlarını getir
-            const database = require('../../modules/database');
+            const database = require('../modules/database');
             let logChannels = [];
             
             try {

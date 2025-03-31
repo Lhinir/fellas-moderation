@@ -1,4 +1,4 @@
-// src/events/memberLogs.js - Düzeltilmiş Audit Log sorgulaması
+// src/events/memberLogs.js
 
 const { Events, EmbedBuilder, AuditLogEvent } = require('discord.js');
 const database = require('../modules/database');
@@ -7,7 +7,43 @@ module.exports = {
     name: Events.ClientReady,
     once: true,
     execute(client) {
-        // Sadece Üye Güncelleme Olayı (Roller ve Nickname değişimi)
+        // Üye Ayrılma Olayı - Özel log kanalını kullanacak şekilde güncellenmiş
+        client.on(Events.GuildMemberRemove, async (member) => {
+            try {
+                // Botları loglama (isteğe bağlı)
+                if (member.user.bot) return;
+                
+                // Eğer üye yasaklandıysa, bu event için log gönderme
+                const isBanned = await member.guild.bans.fetch().then(bans => 
+                    bans.has(member.user.id)
+                ).catch(() => false);
+                
+                if (isBanned) {
+                    // Kullanıcı banlandıysa ayrılma mesajı gönderme
+                    return;
+                }
+                
+                // Önce özel ayrılma log kanalını kontrol et
+                let logChannelId = await database.logs.getLogChannel(member.guild.id, 'leave');
+                
+                // Eğer özel ayrılma kanalı yoksa, varsayılan üye log kanalını kullan
+                if (!logChannelId) {
+                    logChannelId = await database.logs.getLogChannel(member.guild.id, 'member');
+                    if (!logChannelId) return; // Hiçbir log kanalı yoksa çık
+                }
+                
+                const logChannel = await member.guild.channels.fetch(logChannelId).catch(() => null);
+                if (!logChannel) return;
+                
+                // Basit bir ayrılma mesajı gönder
+                await logChannel.send(`👋 **${member.user.tag}** (${member.user.id}) sunucudan ayrıldı.`);
+                
+            } catch (error) {
+                console.error('Üye ayrılma logu gönderilirken hata:', error);
+            }
+        });
+
+        // Rol Değişikliği Olayı
         client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
             try {
                 // Botları loglama (isteğe bağlı)
@@ -57,10 +93,9 @@ module.exports = {
                     
                     try {
                         // Son değişikliği yapan kişiyi bulmaya çalış
-                        // Düzeltilmiş kısım: String yerine sayısal AuditLogEvent kullan
                         const auditLogs = await newMember.guild.fetchAuditLogs({
                             limit: 1,
-                            type: AuditLogEvent.MemberRoleUpdate // Düzeltilmiş kısım
+                            type: AuditLogEvent.MemberRoleUpdate
                         });
                         
                         const roleLog = auditLogs.entries.first();
@@ -93,10 +128,9 @@ module.exports = {
                     
                     try {
                         // Son değişikliği yapan kişiyi bulmaya çalış
-                        // Düzeltilmiş kısım: String yerine sayısal AuditLogEvent kullan
                         const auditLogs = await newMember.guild.fetchAuditLogs({
                             limit: 1,
-                            type: AuditLogEvent.MemberUpdate // Düzeltilmiş kısım
+                            type: AuditLogEvent.MemberUpdate
                         });
                         
                         const nicknameLog = auditLogs.entries.first();
@@ -117,6 +151,6 @@ module.exports = {
             }
         });
         
-        console.log('Rol ve takma ad değişikliği log sistemi başlatıldı.');
+        console.log('Üye, rol ve takma ad değişikliği log sistemi başlatıldı.');
     }
 };
