@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('resetspam')
+        .setName('spamreset')
         .setDescription('Kullanıcının spam seviyesini sıfırlar')
         .addUserOption(option => 
             option.setName('user')

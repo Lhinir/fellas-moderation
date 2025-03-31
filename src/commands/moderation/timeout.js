@@ -6,7 +6,7 @@ const ms = require('ms');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('timeout')
+        .setName('sustur')
         .setDescription('Bir kullanıcıyı belirli bir süre için susturur')
         .addUserOption(option => 
             option.setName('user')

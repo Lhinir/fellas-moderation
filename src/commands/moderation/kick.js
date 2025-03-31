@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('kick')
+        .setName('at')
         .setDescription('Belirtilen kullanıcıyı sunucudan atar')
         .addUserOption(option => 
             option.setName('user')

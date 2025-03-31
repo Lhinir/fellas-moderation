@@ -13,7 +13,7 @@ const ButtonStyle = {
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('panel_moderation')
+        .setName('modpanel')
         .setDescription('Moderasyon panelini açar')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     

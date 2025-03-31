@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('untimeout')
+        .setName('susturmaac')
         .setDescription('Bir kullanıcının susturmasını kaldırır')
         .addUserOption(option => 
             option.setName('user')

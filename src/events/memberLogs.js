@@ -1,6 +1,6 @@
-// src/events/memberLogs.js
+// src/events/memberLogs.js - Düzeltilmiş Audit Log sorgulaması
 
-const { Events, EmbedBuilder } = require('discord.js');
+const { Events, EmbedBuilder, AuditLogEvent } = require('discord.js');
 const database = require('../modules/database');
 
 module.exports = {
@@ -57,9 +57,10 @@ module.exports = {
                     
                     try {
                         // Son değişikliği yapan kişiyi bulmaya çalış
+                        // Düzeltilmiş kısım: String yerine sayısal AuditLogEvent kullan
                         const auditLogs = await newMember.guild.fetchAuditLogs({
                             limit: 1,
-                            type: 'MEMBER_ROLE_UPDATE'
+                            type: AuditLogEvent.MemberRoleUpdate // Düzeltilmiş kısım
                         });
                         
                         const roleLog = auditLogs.entries.first();
@@ -92,9 +93,10 @@ module.exports = {
                     
                     try {
                         // Son değişikliği yapan kişiyi bulmaya çalış
+                        // Düzeltilmiş kısım: String yerine sayısal AuditLogEvent kullan
                         const auditLogs = await newMember.guild.fetchAuditLogs({
                             limit: 1,
-                            type: 'MEMBER_UPDATE'
+                            type: AuditLogEvent.MemberUpdate // Düzeltilmiş kısım
                         });
                         
                         const nicknameLog = auditLogs.entries.first();

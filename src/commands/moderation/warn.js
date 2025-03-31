@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('warn')
+        .setName('uyar')
         .setDescription('Bir kullanıcıyı uyarır')
         .addUserOption(option => 
             option.setName('user')

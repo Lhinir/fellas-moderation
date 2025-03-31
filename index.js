@@ -245,12 +245,40 @@ async function startBot() {
 client.once('ready', async () => {
     console.log(`${client.user.tag} olarak giriş yapıldı!`);
     
-    // Durum mesajını ayarla
-    client.user.setPresence({
-        activities: [{ name: '/yardım', type: ActivityType.Playing }],
-        status: 'online',
-    });
-    
+// İzlenecek rol ID'si (.env dosyasından veya doğrudan belirtin)
+// İstatistik bazlı aktivite durumları
+updateServerStats();
+setInterval(updateServerStats, 1 * 5 * 1000); // Her 10 dakikada bir güncelle
+
+function updateServerStats() {
+    try {
+        // Tüm sunucu ve üye sayılarını topla
+        const guildCount = client.guilds.cache.size;
+        const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+        
+        // Rastgele bir durum seç
+        const statuses = [
+            { type: ActivityType.Watching, text: `${totalMembers} oyuncuyu` },
+            { type: ActivityType.Playing, text: `Fellas Roleplay sunucusuna hoşgeldiniz.` }
+        ];
+        
+        const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+        
+        client.user.setPresence({
+            activities: [{ 
+                name: randomStatus.text, 
+                type: randomStatus.type 
+            }],
+            status: 'online',
+        });
+        
+        console.log(`Bot aktivitesi güncellendi: ${randomStatus.text}`);
+    } catch (error) {
+        console.error('İstatistik güncellenirken hata:', error);
+    }
+}
+
+
     // Tüm sunucuları veritabanında başlat
     try {
         for (const guild of client.guilds.cache.values()) {

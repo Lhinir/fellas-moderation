@@ -29,7 +29,7 @@ module.exports = {
                 .setColor('#0099ff')
                 .setTitle(`📖 /${command.data.name} Komutu`)
                 .setDescription(command.data.description)
-                .setFooter({ text: 'Tüm komutları görmek için /help yazabilirsiniz' })
+                .setFooter({ text: 'Tüm komutları görmek için /yardım yazabilirsiniz' })
                 .setTimestamp();
                 
             // Eğer alt komutlar varsa ekle
@@ -86,7 +86,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setTitle('🤖 Moderasyon Botu Komutları')
-            .setDescription('Aşağıda kullanabileceğiniz komutların listesi bulunmaktadır. Daha fazla bilgi için `/help <komut>` yazabilirsiniz.')
+            .setDescription('Aşağıda kullanabileceğiniz komutların listesi bulunmaktadır. Daha fazla bilgi için `/yardım <komut>` yazabilirsiniz.')
             .setTimestamp()
             .setFooter({ text: `Toplam ${client.commands.size} komut` });
             

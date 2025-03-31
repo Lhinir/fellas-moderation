@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('unban')
+        .setName('banaç')
         .setDescription('Yasaklı bir kullanıcının yasağını kaldırır')
         .addStringOption(option => 
             option.setName('userid')

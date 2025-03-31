@@ -5,11 +5,11 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('warnings')
+        .setName('uyari')
         .setDescription('Kullanıcı uyarılarını yönetir')
         .addSubcommand(subcommand => 
             subcommand
-                .setName('list')
+                .setName('liste')
                 .setDescription('Bir kullanıcının uyarılarını listeler')
                 .addUserOption(option => 
                     option.setName('user')
@@ -17,7 +17,7 @@ module.exports = {
                         .setRequired(true)))
         .addSubcommand(subcommand => 
             subcommand
-                .setName('remove')
+                .setName('kaldir')
                 .setDescription('Belirli bir uyarıyı kaldırır')
                 .addIntegerOption(option => 
                     option.setName('id')
@@ -29,7 +29,7 @@ module.exports = {
                         .setRequired(false)))
         .addSubcommand(subcommand => 
             subcommand
-                .setName('clear')
+                .setName('temizle')
                 .setDescription('Bir kullanıcının tüm uyarılarını temizler')
                 .addUserOption(option => 
                     option.setName('user')

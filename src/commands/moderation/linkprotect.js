@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('linkprotect')
+        .setName('linkkoruma')
         .setDescription('Link koruma ayarlarını yönetir')
         .addSubcommand(subcommand =>
             subcommand

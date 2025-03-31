@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('clear')
+        .setName('temizle')
         .setDescription('Belirtilen sayıda mesajı siler')
         .addIntegerOption(option => 
             option.setName('miktar')

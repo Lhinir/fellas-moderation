@@ -1,5 +1,4 @@
 // src/events/messageLogs.js
-
 const { Events, AuditLogEvent } = require('discord.js');
 const logEvents = require('../modules/log-events');
 
@@ -11,8 +10,8 @@ module.exports = {
         
         // Mesaj silme
         client.on(Events.MessageDelete, async message => {
-            if (message.author?.bot) return; // Bot mesajlarını loglama
-            if (!message.guild) return; // DM mesajlarını loglama
+            // Geçersiz veya bot mesajlarını kontrol et
+            if (!message.guild || message.author?.bot) return;
             
             try {
                 // Ek bilgileri topla
@@ -43,7 +42,8 @@ module.exports = {
                     fields.push({ name: 'Dosyalar', value: attachments });
                 }
                 
-                await logEvents.sendLog(guild, 'message', 'Bir mesaj silindi.', {
+                // Düzeltildi: message.guild ekledik (guild değişkeni yerine)
+                await logEvents.sendLog(message.guild, 'message', 'Bir mesaj silindi.', {
                     color: '#ff0000',
                     title: '🗑️ Mesaj Silindi',
                     fields: fields,
@@ -56,9 +56,11 @@ module.exports = {
         
         // Mesaj güncelleme
         client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
-            if (oldMessage.author?.bot) return; // Bot mesajlarını loglama
-            if (!oldMessage.guild) return; // DM mesajlarını loglama
-            if (oldMessage.content === newMessage.content) return; // İçerik değişmediyse loglama
+            // Geçersiz veya bot mesajlarını kontrol et
+            if (!oldMessage.guild || oldMessage.author?.bot) return;
+            
+            // İçerik değişmediyse loglama
+            if (oldMessage.content === newMessage.content) return;
             
             try {
                 // Eski ve yeni içeriği formatla
@@ -74,7 +76,8 @@ module.exports = {
                     newContent = newContent.slice(0, 1021) + '...';
                 }
                 
-                await logEvents.sendLog(newMessage.guild, 'message', {
+                // Düzeltildi: Eksik description parametresi eklendi
+                await logEvents.sendLog(newMessage.guild, 'message', 'Bir mesaj düzenlendi.', {
                     color: '#ffaa00',
                     title: '✏️ Mesaj Düzenlendi',
                     fields: [
@@ -100,7 +103,8 @@ module.exports = {
             try {
                 const channel = firstMessage.channel;
                 
-                await logEvents.sendLog(guild, 'message', `**${count}** mesaj <#${channel.id}> kanalında silindi.`, {
+                // Düzeltildi: firstMessage.guild kullanıldı ve count yerine messages.size eklendi
+                await logEvents.sendLog(firstMessage.guild, 'message', `**${messages.size}** mesaj <#${channel.id}> kanalında silindi.`, {
                     color: '#ff0000',
                     title: '🗑️ Toplu Mesaj Silindi',
                     fields: [

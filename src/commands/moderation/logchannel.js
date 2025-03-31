@@ -5,7 +5,7 @@ const database = require('../../modules/database');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('logchannel')
+        .setName('logkanal')
         .setDescription('Log kanallarını ayarla')
         .addSubcommand(subcommand =>
             subcommand
