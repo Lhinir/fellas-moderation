@@ -247,8 +247,10 @@ client.once('ready', async () => {
     
 // İzlenecek rol ID'si (.env dosyasından veya doğrudan belirtin)
 // İstatistik bazlı aktivite durumları
+let activityIndex = 0; // Mevcut aktivite indeksi
+
 updateServerStats();
-setInterval(updateServerStats, 1 * 5 * 1000); // Her 10 dakikada bir güncelle
+setInterval(updateServerStats, 1 * 10 * 1000); // Her 10 dakikada bir güncelle
 
 function updateServerStats() {
     try {
@@ -262,17 +264,19 @@ function updateServerStats() {
             { type: ActivityType.Playing, text: `Fellas Roleplay sunucusuna hoşgeldiniz.` }
         ];
         
-        const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+        const currentStatus = statuses[activityIndex];
         
         client.user.setPresence({
             activities: [{ 
-                name: randomStatus.text, 
-                type: randomStatus.type 
+                name: currentStatus.text, 
+                type: currentStatus.type 
             }],
             status: 'online',
         });
         
-        console.log(`Bot aktivitesi güncellendi: ${randomStatus.text}`);
+        console.log(`Bot aktivitesi güncellendi: (#${activityIndex+1}): ${currentStatus.text}`);
+         // Sıradaki indekse geç (döngüsel olarak)
+         activityIndex = (activityIndex + 1) % statuses.length;
     } catch (error) {
         console.error('İstatistik güncellenirken hata:', error);
     }
