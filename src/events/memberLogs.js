@@ -36,7 +36,7 @@ module.exports = {
                 if (!logChannel) return;
                 
                 // Basit bir ayrılma mesajı gönder
-                await logChannel.send(`👋 **${member.user.tag}** (${member.user.id}) sunucudan ayrıldı.`);
+                await logChannel.send(`**${member.user.tag}** (${member.user.id}) sunucudan ayrıldı.`);
                 
             } catch (error) {
                 console.error('Üye ayrılma logu gönderilirken hata:', error);
