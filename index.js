@@ -261,7 +261,7 @@ function updateServerStats() {
         // Rastgele bir durum seç
         const statuses = [
             { type: ActivityType.Watching, text: `${totalMembers} oyuncuyu` },
-            { type: ActivityType.Playing, text: `Fellas Roleplay.` }
+            { type: ActivityType.Playing, text: `Fellas Roleplay` }
         ];
         
         const currentStatus = statuses[activityIndex];
