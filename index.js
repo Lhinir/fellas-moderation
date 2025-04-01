@@ -250,7 +250,7 @@ client.once('ready', async () => {
 let activityIndex = 0; // Mevcut aktivite indeksi
 
 updateServerStats();
-setInterval(updateServerStats, 1 * 10 * 1000); // Her 10 dakikada bir güncelle
+setInterval(updateServerStats, 1 * 30 * 1000); // Her 10 dakikada bir güncelle
 
 function updateServerStats() {
     try {
@@ -274,7 +274,6 @@ function updateServerStats() {
             status: 'online',
         });
         
-        console.log(`Bot aktivitesi güncellendi: (#${activityIndex+1}): ${currentStatus.text}`);
          // Sıradaki indekse geç (döngüsel olarak)
          activityIndex = (activityIndex + 1) % statuses.length;
     } catch (error) {
