@@ -61,6 +61,9 @@ module.exports = {
             
             // İçerik değişmediyse loglama
             if (oldMessage.content === newMessage.content) return;
+
+            // Mesaj bir bottan mı geliyor kontrol et - Botların mesajlarını log'lama
+            if (newMessage.author && newMessage.author.bot) return;
             
             try {
                 // Eski ve yeni içeriği formatla
