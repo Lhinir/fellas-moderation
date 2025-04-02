@@ -46,8 +46,8 @@ module.exports = {
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('panel_back')
-                    .setLabel('Ana Menü')
+                    .setCustomId('panel_settings')
+                    .setLabel('Ana Panele Dön')
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('◀️')
             );

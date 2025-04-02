@@ -60,8 +60,8 @@ module.exports = {
             const row2 = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
-                        .setCustomId('mod_panel_back')
-                        .setLabel('Panele Dön')
+                        .setCustomId('panel_moderation')
+                        .setLabel('Ana Panele Dön')
                         .setStyle(ButtonStyle.Secondary)
                         .setEmoji('⬅️')
                 );

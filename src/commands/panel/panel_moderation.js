@@ -3,7 +3,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 
 module.exports = {
-    customId: 'panel_moderation',
+    data: new SlashCommandBuilder()
+        .setName('panel_moderation')
+        .setDescription('Moderasyon panelini açar')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     async execute(interaction) {
         try {

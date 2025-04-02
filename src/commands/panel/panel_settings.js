@@ -1,7 +1,5 @@
 // src/commands/admin/panel.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('panel_settings')
@@ -14,51 +12,46 @@ module.exports = {
             .setTitle('🛠️ Fellas Bot Yönetim Paneli')
             .setDescription('Aşağıdaki butonları kullanarak bot ayarlarını kolay ve hızlı bir şekilde yapılandırabilirsiniz.')
             .addFields(
-                { name: 'Moderasyon Ayarları', value: 'AutoMod, spam kontrolü ve link engelleme ayarları' },
                 { name: 'Log Ayarları', value: 'Çeşitli log kanallarını yapılandırma' },
-                { name: 'Sunucu Ayarları', value: 'Karşılama, oto-rol ve diğer sunucu ayarları' },
+                { name: 'Sunucu Bilgileri', value: 'Sunucu bilgilerini görüntüler' },
                 { name: 'Bot Bilgileri', value: 'Bot istatistikleri ve durum bilgileri' }
             )
             .setTimestamp()
             .setFooter({ text: 'Bot ayarlarını yönetin ve yapılandırın' });
             
-        const row1 = new ActionRowBuilder()
+        const row = new ActionRowBuilder()
             .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('panel_moderation')
-                    .setLabel('Moderasyon Ayarları')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🛡️'),
                 new ButtonBuilder()
                     .setCustomId('panel_logs')
                     .setLabel('Log Ayarları')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📋')
-            );
-            
-        const row2 = new ActionRowBuilder()
-            .addComponents(
+                    .setEmoji('📋'),
                 new ButtonBuilder()
                     .setCustomId('panel_server')
-                    .setLabel('Sunucu Ayarları')
+                    .setLabel('Sunucu Bilgileri')
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('⚙️'),
                 new ButtonBuilder()
                     .setCustomId('panel_info')
                     .setLabel('Bot Bilgileri')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('ℹ️')
+                    .setEmoji('ℹ️'),
+                new ButtonBuilder()
+                    .setCustomId('panel_main')
+                    .setLabel('Ana Panele Dön')
+                    .setStyle(ButtonStyle.Secondary) // Secondary
+                    .setEmoji('🏠')
             );
         
         if (interaction.isButton()) {
             await interaction.update({ 
                 embeds: [embed], 
-                components: [row],
+                components: [row], // row yerine row1, row2 kullanın
             });
         } else {
             await interaction.reply({ 
                 embeds: [embed], 
-                components: [row],
+                components: [row], // row yerine row1, row2 kullanın
                 ephemeral: true  // Kişiye özel
             });
         }

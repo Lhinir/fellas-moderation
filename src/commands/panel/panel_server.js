@@ -49,10 +49,10 @@ module.exports = {
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
-                        .setCustomId('panel_main')
+                        .setCustomId('panel_settings')
                         .setLabel('Ana Panele Dön')
                         .setStyle(2) // Secondary
-                        .setEmoji('🏠')
+                        .setEmoji('◀️')
                 );
 
             // Interaction tipine göre doğru yöntemi kullan

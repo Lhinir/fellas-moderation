@@ -73,7 +73,7 @@ module.exports = {
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('panel_moderation')
-                        .setLabel('Geri')
+                        .setLabel('Ana Panele Dön')
                         .setStyle(ButtonStyle.Secondary)
                         .setEmoji('◀️')
                 );
