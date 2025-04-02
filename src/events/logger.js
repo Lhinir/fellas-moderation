@@ -85,7 +85,7 @@ class DiscordLogger {
             leftAt: new Date().toISOString() 
         });
     }
-
+    /*
     async logMessageDelete(message) {
         // Sistem mesajları veya botların mesajlarını loglamayı atla
         if (message.system || message.author.bot) return;
@@ -113,7 +113,7 @@ class DiscordLogger {
             deletedAt: new Date().toISOString()
         });
     }
-
+    */
     /*
     async logMessageEdit(oldMessage, newMessage) {
         // Sistem mesajları veya botların mesajlarını loglamayı atla
