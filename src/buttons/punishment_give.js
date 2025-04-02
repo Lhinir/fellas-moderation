@@ -1,7 +1,7 @@
 // src/buttons/punishment_give.js
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
-const database = require('../modules/database');
+const database = require('../../modules/database');
 
 module.exports = {
     customId: 'punishment_give',
@@ -52,13 +52,13 @@ module.exports = {
                             {
                                 label: 'Susturma',
                                 description: 'Kullanıcıyı belirli bir süre için susturur',
-                                value: 'sustur',
+                                value: 'mute',
                                 emoji: '🔇'
                             },
                             {
                                 label: 'Uyarı',
                                 description: 'Kullanıcıya uyarı verir',
-                                value: 'uyar',
+                                value: 'warn',
                                 emoji: '⚠️'
                             }
                         ])
@@ -76,7 +76,7 @@ module.exports = {
             
             // Bilgi mesajı
             await interaction.reply({
-                content: '⚠️ **Not:** Bu menü üzerinden ceza vermek yerine, daha gelişmiş seçenekler için aşağıdaki slash komutlarını kullanmanızı öneririz:\n• `/ban` - Kalıcı yasak\n• `/tempban` - Geçici yasak\n• `/sustur` - Susturma\n• `/uyar` - Uyarı',
+                content: '⚠️ **Not:** Bu menü üzerinden ceza vermek yerine, daha gelişmiş seçenekler için aşağıdaki slash komutlarını kullanmanızı öneririz:\n• `/ban` - Kalıcı yasak\n• `/tempban` - Geçici yasak\n• `/mute` - Susturma\n• `/warn` - Uyarı',
                 embeds: [embed],
                 components: [row1, row2],
                 ephemeral: true
@@ -88,7 +88,7 @@ module.exports = {
             const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
             
             collector.on('collect', async (i) => {
-                await i.deferUpdate();
+                // DÜZELTİLDİ: deferUpdate() çağrısını kaldırdık
                 const selectedPunishmentType = i.values[0];
                 
                 // Ceza bilgilerini sormak için modal oluştur
@@ -272,8 +272,8 @@ function getPunishmentTypeName(type) {
     switch (type) {
         case 'ban': return '🔨 Ban';
         case 'tempban': return '⏱️ Geçici Ban';
-        case 'sustur': return '🔇 Susturma';
-        case 'uyar': return '⚠️ Uyarı';
+        case 'mute': return '🔇 Susturma';
+        case 'warn': return '⚠️ Uyarı';
         default: return type;
     }
 }
@@ -296,7 +296,7 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 
                 return true;
                 
-            case 'sustur':
+            case 'mute':
                 const member = await guild.members.fetch(user.id).catch(() => null);
                 
                 if (!member) {
@@ -318,7 +318,7 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 await member.timeout(timeoutDuration, reason);
                 return true;
                 
-            case 'uyar':
+            case 'warn':
                 // Uyarı sisteminizi kullanabilirsiniz
                 await database.warnings.addWarning(
                     interaction.guild.id,
