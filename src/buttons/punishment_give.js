@@ -1,6 +1,6 @@
 // src/buttons/punishment_give.js
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const database = require('../modules/database');
 
 // Bir kere ve global olarak tanımlanmış bir listener flag'i
@@ -112,7 +112,7 @@ module.exports = {
                                 new ButtonBuilder()
                                     .setCustomId('mod_punishment_system')
                                     .setLabel('Ceza Sistemine Dön')
-                                    .setStyle(ButtonStyle.Secondary)
+                                    .setStyle(2) // ButtonStyle.Secondary
                                     .setEmoji('⬅️')
                             );
                         
@@ -155,47 +155,42 @@ module.exports = {
                 .setFooter({ text: 'Ceza Sistemi', iconURL: interaction.guild.iconURL() })
                 .setTimestamp();
             
-            // Ceza türü seçim menüsü
+            // Ceza türü seçim butonları - ButtonStyle enum'u yerine sayısal değerler kullanıyoruz
             const row1 = new ActionRowBuilder()
                 .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId('punishment_type_select')
-                        .setPlaceholder('Ceza türünü seçin')
-                        .addOptions([
-                            {
-                                label: 'Ban',
-                                description: 'Kullanıcıyı kalıcı olarak yasaklar',
-                                value: 'ban',
-                                emoji: '🔨'
-                            },
-                            {
-                                label: 'Geçici Ban',
-                                description: 'Kullanıcıyı belirli bir süre için yasaklar',
-                                value: 'tempban',
-                                emoji: '⏱️'
-                            },
-                            {
-                                label: 'Susturma',
-                                description: 'Kullanıcıyı belirli bir süre için susturur',
-                                value: 'mute',
-                                emoji: '🔇'
-                            },
-                            {
-                                label: 'Uyarı',
-                                description: 'Kullanıcıya uyarı verir',
-                                value: 'warn',
-                                emoji: '⚠️'
-                            }
-                        ])
+                    new ButtonBuilder()
+                        .setCustomId('punishment_button_ban')
+                        .setLabel('Ban')
+                        .setStyle(4) // Danger (ButtonStyle.Danger)
+                        .setEmoji('🔨'),
+                    new ButtonBuilder()
+                        .setCustomId('punishment_button_tempban')
+                        .setLabel('Geçici Ban')
+                        .setStyle(4) // Danger (ButtonStyle.Danger)
+                        .setEmoji('⏱️')
+                );
+            
+            const row2 = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('punishment_button_mute')
+                        .setLabel('Susturma')
+                        .setStyle(1) // Primary (ButtonStyle.Primary)
+                        .setEmoji('🔇'),
+                    new ButtonBuilder()
+                        .setCustomId('punishment_button_warn')
+                        .setLabel('Uyarı')
+                        .setStyle(3) // Success (ButtonStyle.Success)
+                        .setEmoji('⚠️')
                 );
             
             // Geri dön butonu
-            const row2 = new ActionRowBuilder()
+            const row3 = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('mod_punishment_system')
                         .setLabel('Ceza Sistemine Dön')
-                        .setStyle(ButtonStyle.Secondary)
+                        .setStyle(2) // Secondary (ButtonStyle.Secondary)
                         .setEmoji('⬅️')
                 );
             
@@ -203,21 +198,28 @@ module.exports = {
             await interaction.reply({
                 content: '⚠️ **Not:** Bu menü üzerinden ceza vermek yerine, daha gelişmiş seçenekler için aşağıdaki slash komutlarını kullanmanızı öneririz:\n• `/ban` - Kalıcı yasak\n• `/tempban` - Geçici yasak\n• `/mute` - Susturma\n• `/warn` - Uyarı',
                 embeds: [embed],
-                components: [row1, row2],
+                components: [row1, row2, row3],
                 ephemeral: true
             });
             
-            // Kullanıcının seçimini bekle
-            const filter = i => i.customId === 'punishment_type_select' && i.user.id === interaction.user.id;
+            // Buton tıklamalarını tek bir fonksiyonla ele almak için bir collector
+            const filter = i => 
+                i.customId.startsWith('punishment_button_') && 
+                i.user.id === interaction.user.id;
             
-            const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
+            const collector = interaction.channel.createMessageComponentCollector({ 
+                filter, 
+                time: 60000,
+                max: 1 // Sadece bir tıklamaya izin ver
+            });
             
             collector.on('collect', async (i) => {
-                const selectedPunishmentType = i.values[0];
+                // Buton ID'sinden ceza türünü al
+                const punishmentType = i.customId.replace('punishment_button_', '');
                 
                 // Ceza bilgilerini sormak için modal oluştur
                 const modal = new ModalBuilder()
-                    .setCustomId(`punishment_modal_${selectedPunishmentType}`)
+                    .setCustomId(`punishment_modal_${punishmentType}`)
                     .setTitle('Ceza Detayları');
                 
                 const userIdInput = new TextInputBuilder()
@@ -240,7 +242,7 @@ module.exports = {
                 modal.addComponents(firstActionRow, secondActionRow);
                 
                 // Süre gerektiren cezalar için süre input'u ekle
-                if (selectedPunishmentType === 'tempban' || selectedPunishmentType === 'mute') {
+                if (punishmentType === 'tempban' || punishmentType === 'mute') {
                     const durationInput = new TextInputBuilder()
                         .setCustomId('duration')
                         .setLabel('Süre (örn: 1d, 12h, 30m)')
@@ -254,9 +256,6 @@ module.exports = {
                 
                 // Modal'ı göster - deferUpdate olmadan
                 await i.showModal(modal);
-                
-                // Collector'ı durdur
-                collector.stop();
             });
         } catch (error) {
             console.error('Ceza verme paneli hatası:', error);
@@ -267,6 +266,7 @@ module.exports = {
         }
     }
 };
+
 
 // Süre formatını (1d, 12h, 30m) milisaniyeye çevirme fonksiyonu
 function parseDuration(durationStr) {
@@ -306,18 +306,82 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
     try {
         switch (type) {
             case 'ban':
-                await guild.members.ban(user.id, { reason: reason });
-                return true;
+                // Bot'un izinlerini kontrol et
+                if (!guild.members.me.permissions.has('BanMembers')) {
+                    await interaction.editReply({ content: 'Bot, üyeleri yasaklamak için gerekli izinlere sahip değil. Bota "Üyeleri Yasakla" izni verildiğinden emin olun.' });
+                    return false;
+                }
+                
+                try {
+                    // Kullanıcı sunucuda mı kontrol et
+                    const memberToBan = await guild.members.fetch(user.id).catch(() => null);
+                    
+                    // Kullanıcı sunucudaysa, banlanabilir mi kontrol et
+                    if (memberToBan && !memberToBan.bannable) {
+                        await interaction.editReply({ content: 'Bu kullanıcı bot tarafından yasaklanamaz. Kullanıcının rolü botun rolünden daha yüksek olabilir.' });
+                        return false;
+                    }
+                    
+                    await guild.members.ban(user.id, { reason: reason });
+                    return true;
+                } catch (banError) {
+                    console.error('Ban hatası:', banError);
+                    await interaction.editReply({ content: `Kullanıcıyı yasaklarken hata: ${banError.message}` });
+                    return false;
+                }
                 
             case 'tempban':
-                await guild.members.ban(user.id, { reason: `${reason} (Süre: ${duration})` });
-                return true;
+                // Bot'un izinlerini kontrol et
+                if (!guild.members.me.permissions.has('BanMembers')) {
+                    await interaction.editReply({ content: 'Bot, üyeleri yasaklamak için gerekli izinlere sahip değil. Bota "Üyeleri Yasakla" izni verildiğinden emin olun.' });
+                    return false;
+                }
+                
+                try {
+                    // Kullanıcı sunucuda mı kontrol et
+                    const memberToBan = await guild.members.fetch(user.id).catch(() => null);
+                    
+                    // Kullanıcı sunucudaysa, banlanabilir mi kontrol et
+                    if (memberToBan && !memberToBan.bannable) {
+                        await interaction.editReply({ content: 'Bu kullanıcı bot tarafından yasaklanamaz. Kullanıcının rolü botun rolünden daha yüksek olabilir.' });
+                        return false;
+                    }
+                    
+                    await guild.members.ban(user.id, { reason: `${reason} (Süre: ${duration})` });
+                    
+                    // Zamanı gelince ban'ı kaldırmak için
+                    setTimeout(async () => {
+                        try {
+                            await guild.members.unban(user.id, 'Geçici ban süresi doldu').catch(e => console.error('Unban hatası:', e));
+                        } catch (err) {
+                            console.error("Unban hatası:", err);
+                        }
+                    }, endTime - Date.now());
+                    
+                    return true;
+                } catch (banError) {
+                    console.error('Tempban hatası:', banError);
+                    await interaction.editReply({ content: `Kullanıcıyı geçici olarak yasaklarken hata: ${banError.message}` });
+                    return false;
+                }
                 
             case 'mute':
                 const member = await guild.members.fetch(user.id).catch(() => null);
                 
                 if (!member) {
                     await interaction.editReply({ content: 'Kullanıcı bu sunucuda bulunamadı.' });
+                    return false;
+                }
+                
+                // Bot'un izinlerini kontrol et
+                if (!guild.members.me.permissions.has('ModerateMembers')) {
+                    await interaction.editReply({ content: 'Bot, üyeleri zaman aşımına uğratmak için gerekli izinlere sahip değil. Bota "Üyeleri Yönet" izni verildiğinden emin olun.' });
+                    return false;
+                }
+                
+                // Hedef üyenin bot veya rolleri nedeniyle zaman aşımına uğratılamaz olup olmadığını kontrol et
+                if (!member.moderatable) {
+                    await interaction.editReply({ content: 'Bu kullanıcı bot tarafından susturulamaz. Kullanıcının rolü botun rolünden daha yüksek olabilir.' });
                     return false;
                 }
                 
@@ -347,7 +411,15 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
         }
     } catch (error) {
         console.error(`Ceza uygulama hatası (${type}):`, error);
-        await interaction.editReply({ content: `Ceza uygulanırken bir hata oluştu: ${error.message}` });
+        
+        // Hata mesajını daha açıklayıcı yapın
+        let errorMessage = `Ceza uygulanırken bir hata oluştu: ${error.message}`;
+        
+        if (error.code === 50013) {
+            errorMessage = 'Bot, bu işlemi gerçekleştirmek için gerekli izinlere sahip değil. Lütfen bot rolünün izinlerini kontrol edin ve botun hedef kullanıcıdan daha yüksek bir role sahip olduğundan emin olun.';
+        }
+        
+        await interaction.editReply({ content: errorMessage });
         return false;
     }
 }
