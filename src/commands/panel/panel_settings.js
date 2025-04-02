@@ -50,6 +50,17 @@ module.exports = {
                     .setEmoji('ℹ️')
             );
         
-        await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+        if (interaction.isButton()) {
+            await interaction.update({ 
+                embeds: [embed], 
+                components: [row],
+            });
+        } else {
+            await interaction.reply({ 
+                embeds: [embed], 
+                components: [row],
+                ephemeral: true  // Kişiye özel
+            });
+        }
     }
 };

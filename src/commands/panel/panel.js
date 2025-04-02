@@ -1,6 +1,6 @@
 // src/commands/panel/panel.js
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -26,22 +26,54 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('panel_moderation')
                         .setLabel('Moderasyon')
-                        .setStyle(ButtonStyle.Primary)
+                        .setStyle(1) // Primary
                         .setEmoji('🛡️'),
                     new ButtonBuilder()
                         .setCustomId('panel_settings')
                         .setLabel('Ayarlar')
-                        .setStyle(ButtonStyle.Danger)
+                        .setStyle(4) // Danger
                         .setEmoji('⚙️')
                 );
 
-            await interaction.reply({ embeds: [embed], components: [row] });
+            // Interaction tipine göre doğru yöntemi kullan
+            if (interaction.isButton()) {
+                // Buton için update kullan
+                await interaction.update({ 
+                    embeds: [embed], 
+                    components: [row]
+                    // Not: update ile ephemeral özelliği değiştirilemez
+                });
+            } else if (!interaction.replied && !interaction.deferred) {
+                // Slash komut için ve henüz cevap verilmemişse reply kullan
+                await interaction.reply({ 
+                    embeds: [embed], 
+                    components: [row],
+                    ephemeral: true
+                });
+            } else {
+                // Daha önce deferred veya replied ise followUp kullan
+                await interaction.followUp({ 
+                    embeds: [embed], 
+                    components: [row],
+                    ephemeral: true
+                });
+            }
         } catch (error) {
-            console.error('Panel komutu hatası:', error);
-            await interaction.reply({ 
-                content: 'Panel açılırken bir hata oluştu!', 
-                ephemeral: true 
-            });
+            console.error('Ana panel hatası:', error);
+            
+            // Sadece henüz cevap verilmemişse reply kullan
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ 
+                    content: 'Panel açılırken bir hata oluştu!', 
+                    ephemeral: true 
+                });
+            } else {
+                // Daha önce cevap verilmişse followUp kullan
+                await interaction.followUp({ 
+                    content: 'Panel açılırken bir hata oluştu!', 
+                    ephemeral: true 
+                });
+            }
         }
     }
 };

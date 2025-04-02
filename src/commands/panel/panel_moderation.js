@@ -1,13 +1,9 @@
 // src/commands/panel/panel_moderation.js
 
-// Öncelikle, ButtonStyle'ı doğru şekilde import ettiğinizden emin olalım
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('panel_moderation')
-        .setDescription('Moderasyon panelini açar')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    customId: 'panel_moderation',
     
     async execute(interaction) {
         try {
@@ -25,26 +21,22 @@ module.exports = {
                 .setFooter({ text: 'Moderasyon Paneli', iconURL: interaction.guild.iconURL() })
                 .setTimestamp();
 
-            // Buton stillerini sabit sayısal değerler olarak belirtelim
-            // Discord.js v14'te ButtonStyle şu değerleri içerir:
-            // Primary = 1, Secondary = 2, Success = 3, Danger = 4, Link = 5
-            
             const row1 = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('mod_ban_manage')
                         .setLabel('Ban Yönetimi')
-                        .setStyle(4) // ButtonStyle.Danger yerine 4 kullanıyoruz
+                        .setStyle(4) // Danger
                         .setEmoji('🔨'),
                     new ButtonBuilder()
                         .setCustomId('mod_mute_manage')
                         .setLabel('Mute Yönetimi')
-                        .setStyle(1) // ButtonStyle.Primary yerine 1 kullanıyoruz 
+                        .setStyle(1) // Primary
                         .setEmoji('🔇'),
                     new ButtonBuilder()
                         .setCustomId('mod_warning_manage')
                         .setLabel('Uyarı Yönetimi')
-                        .setStyle(3) // ButtonStyle.Success yerine 3 kullanıyoruz
+                        .setStyle(3) // Success
                         .setEmoji('⚠️')
                 );
                 
@@ -53,31 +45,54 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_punishment_system')
                         .setLabel('Ceza Sistemi')
-                        .setStyle(4) // ButtonStyle.Danger yerine 4 kullanıyoruz
+                        .setStyle(4) // Danger
                         .setEmoji('🚓'),
                     new ButtonBuilder()
                         .setCustomId('mod_log_settings')
                         .setLabel('Log Ayarları')
-                        .setStyle(3) // ButtonStyle.Success yerine 3 kullanıyoruz
+                        .setStyle(3) // Success
                         .setEmoji('📋'),
                     new ButtonBuilder()
                         .setCustomId('panel_main')
                         .setLabel('Ana Panele Dön')
-                        .setStyle(2) // ButtonStyle.Secondary yerine 2 kullanıyoruz
+                        .setStyle(2) // Secondary
                         .setEmoji('🏠')
                 );
 
-            // Interaction tipine göre update veya reply kullan
+            // Interaction tipine göre doğru yöntemi kullan
             if (interaction.isButton()) {
-                await interaction.update({ embeds: [embed], components: [row1, row2] });
+                // Buton için update kullan
+                await interaction.update({ 
+                    embeds: [embed], 
+                    components: [row1, row2]  // row yerine row1, row2 kullan
+                });
+            } else if (!interaction.replied && !interaction.deferred) {
+                // Slash komut için ve henüz cevap verilmemişse reply kullan
+                await interaction.reply({ 
+                    embeds: [embed], 
+                    components: [row1, row2],  // row yerine row1, row2 kullan
+                    ephemeral: true
+                });
             } else {
-                await interaction.reply({ embeds: [embed], components: [row1, row2] });
+                // Daha önce deferred veya replied ise followUp kullan
+                await interaction.followUp({ 
+                    embeds: [embed], 
+                    components: [row1, row2],  // row yerine row1, row2 kullan
+                    ephemeral: true
+                });
             }
         } catch (error) {
             console.error('Moderasyon paneli hatası:', error);
             
+            // Sadece henüz cevap verilmemişse reply kullan
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.reply({ 
+                    content: 'Moderasyon paneli açılırken bir hata oluştu!', 
+                    ephemeral: true 
+                });
+            } else {
+                // Daha önce cevap verilmişse followUp kullan
+                await interaction.followUp({ 
                     content: 'Moderasyon paneli açılırken bir hata oluştu!', 
                     ephemeral: true 
                 });
