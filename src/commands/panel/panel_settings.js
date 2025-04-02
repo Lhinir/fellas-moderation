@@ -4,7 +4,7 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('panel')
+        .setName('panel_settings')
         .setDescription('Bot ayar panelini aç')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
@@ -27,12 +27,12 @@ module.exports = {
                 new ButtonBuilder()
                     .setCustomId('panel_moderation')
                     .setLabel('Moderasyon Ayarları')
-                    .setStyle(ButtonStyle.Primary)
+                    .setStyle(ButtonStyle.Secondary)
                     .setEmoji('🛡️'),
                 new ButtonBuilder()
                     .setCustomId('panel_logs')
                     .setLabel('Log Ayarları')
-                    .setStyle(ButtonStyle.Primary)
+                    .setStyle(ButtonStyle.Secondary)
                     .setEmoji('📋')
             );
             
@@ -41,7 +41,7 @@ module.exports = {
                 new ButtonBuilder()
                     .setCustomId('panel_server')
                     .setLabel('Sunucu Ayarları')
-                    .setStyle(ButtonStyle.Primary)
+                    .setStyle(ButtonStyle.Secondary)
                     .setEmoji('⚙️'),
                 new ButtonBuilder()
                     .setCustomId('panel_info')
