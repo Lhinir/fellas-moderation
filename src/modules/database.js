@@ -487,14 +487,16 @@ const warnings = {
     },
     
     // Kullanıcının tüm uyarılarını temizle
-    clearWarnings: async (guildId, userId) => {
+    clearAutomatedWarnings: async (guildId, userId) => {
         try {
             return run(
-                'DELETE FROM warnings WHERE guild_id = ? AND user_id = ?',
-                [guildId, userId]
+                'DELETE FROM warnings WHERE guild_id = ? AND user_id = ? AND reason LIKE ?',
+                [guildId, userId, '%Otomatik uyarı:%']
+                // Alternatif olarak, spam uyarılarını belirli bir formatta kaydettiyseniz:
+                // [guildId, userId, '%spam%']
             );
         } catch (error) {
-            console.error(`Uyarı temizleme hatası:`, error);
+            console.error(`Otomatik uyarı temizleme hatası:`, error);
             throw error;
         }
     }
