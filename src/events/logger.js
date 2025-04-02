@@ -20,16 +20,6 @@ class DiscordLogger {
             await this.logMemberLeave(member);
         });
 
-        // Mesaj silme log'u
-        this.client.on(Events.MessageDelete, async (message) => {
-            await this.logMessageDelete(message);
-        });
-
-        // Mesaj düzenleme log'u
-        this.client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
-            await this.logMessageEdit(oldMessage, newMessage);
-        });
-
         // Rol değişikliği log'u
         this.client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
             await this.logRoleChanges(oldMember, newMember);
@@ -85,67 +75,6 @@ class DiscordLogger {
             leftAt: new Date().toISOString() 
         });
     }
-    /*
-    async logMessageDelete(message) {
-        // Sistem mesajları veya botların mesajlarını loglamayı atla
-        if (message.system || message.author.bot) return;
-
-        const logChannel = await this.getLogChannel();
-        if (!logChannel) return;
-
-        const embed = new EmbedBuilder()
-            .setColor('#FF4500')
-            .setTitle('Mesaj Silindi')
-            .setDescription(`Bir mesaj ${message.channel} kanalında silindi!`)
-            .addFields(
-                { name: 'Gönderen', value: message.author.tag },
-                { name: 'İçerik', value: message.content || 'İçerik yok (resim/dosya)' },
-                { name: 'Kanal', value: message.channel.toString() }
-            )
-            .setTimestamp();
-
-        await logChannel.send({ embeds: [embed] });
-        this.writeToLogFile('message_delete', {
-            authorId: message.author.id,
-            authorTag: message.author.tag,
-            content: message.content,
-            channelId: message.channel.id,
-            deletedAt: new Date().toISOString()
-        });
-    }
-    */
-    /*
-    async logMessageEdit(oldMessage, newMessage) {
-        // Sistem mesajları veya botların mesajlarını loglamayı atla
-        if (oldMessage.system || oldMessage.author.bot) return;
-        if (oldMessage.content === newMessage.content) return;
-
-        const logChannel = await this.getLogChannel();
-        if (!logChannel) return;
-
-        const embed = new EmbedBuilder()
-            .setColor('#FFA500')
-            .setTitle('Mesaj Düzenlendi')
-            .setDescription(`Bir mesaj ${newMessage.channel} kanalında düzenlendi!`)
-            .addFields(
-                { name: 'Gönderen', value: oldMessage.author.tag },
-                { name: 'Eski İçerik', value: oldMessage.content || 'İçerik yok' },
-                { name: 'Yeni İçerik', value: newMessage.content || 'İçerik yok' },
-                { name: 'Kanal', value: newMessage.channel.toString() }
-            )
-            .setTimestamp();
-
-        await logChannel.send({ embeds: [embed] });
-        this.writeToLogFile('message_edit', {
-            authorId: oldMessage.author.id,
-            authorTag: oldMessage.author.tag,
-            oldContent: oldMessage.content,
-            newContent: newMessage.content,
-            channelId: newMessage.channel.id,
-            editedAt: new Date().toISOString()
-        });
-    }
-    */
 
     async logRoleChanges(oldMember, newMember) {
         const logChannel = await this.getLogChannel();
