@@ -1,4 +1,4 @@
-// src/events/messageLog.js
+// src/events/messageLogs.js
 
 const { Events, EmbedBuilder } = require('discord.js');
 const database = require('../modules/database');
@@ -13,11 +13,19 @@ module.exports = {
         // Mesaj silme olayı
         client.on(Events.MessageDelete, async (message) => {
             try {
+                // Mesaj eksik bilgilerle gelmiş olabilir, kontrol et
+                if (!message || !message.guild) return;
+                
+                console.log(`Mesaj silindi: ${message.content || '[içerik yok]'}`);
+                
                 // Mesaj bir bottan mı geliyor kontrol et
-                if (message.author && message.author.bot) return;
-
-                // DM mesajlarını yoksay
-                if (!message.guild) return;
+                // NULL KONTROLÜ EKLENDİ
+                if (!message.author) {
+                    console.log('Silinen mesajın yazarı bulunamadı.');
+                    return;
+                }
+                
+                if (message.author.bot) return;
 
                 // Log kanalını kontrol et
                 const logChannelId = await database.logs.getLogChannel(message.guild.id, 'message');
@@ -61,14 +69,20 @@ module.exports = {
         // Mesaj düzenleme olayı
         client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
             try {
+                // Null kontrolü ekle
+                if (!oldMessage || !newMessage || !newMessage.guild) return;
+                
                 // Eğer mesaj içerikleri aynıysa yoksay
                 if (oldMessage.content === newMessage.content) return;
                 
                 // Mesaj bir bottan mı geliyor kontrol et
-                if (newMessage.author && newMessage.author.bot) return;
+                // NULL KONTROLÜ EKLENDİ
+                if (!newMessage.author) {
+                    console.log('Düzenlenen mesajın yazarı bulunamadı.');
+                    return;
+                }
                 
-                // DM mesajlarını yoksay
-                if (!newMessage.guild) return;
+                if (newMessage.author.bot) return;
                 
                 // Aynı mesajın kısa süre içinde birden fazla kez düzenlenmesini önle
                 const messageId = newMessage.id;
