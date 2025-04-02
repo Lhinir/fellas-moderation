@@ -1,7 +1,7 @@
 // src/buttons/punishment_give.js
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
-const database = require('../../modules/database');
+const database = require('../modules/database');
 
 module.exports = {
     customId: 'punishment_give',
