@@ -29,10 +29,10 @@ module.exports = {
                     .setStyle(ButtonStyle.Danger)
                     .setEmoji('🔗'),
                 new ButtonBuilder()
-                    .setCustomId('mod_punishments')
+                    .setCustomId('mod_punishment_system')  // Dikkat: customId değişti
                     .setLabel('Ceza Sistemi')
                     .setStyle(ButtonStyle.Danger)
-                    .setEmoji('⚖️')
+                    .setEmoji('🚓'),
             );
             
         const row2 = new ActionRowBuilder()

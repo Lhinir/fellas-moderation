@@ -29,6 +29,21 @@ function initializeDatabase() {
         
         // Tablolar için SQL komutları
         const tables = [
+            // Cezalar tablosu
+            `CREATE TABLE IF NOT EXISTS punishments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                user_id TEXT,
+                moderator_id TEXT,
+                type TEXT,
+                reason TEXT,
+                duration TEXT,
+                end_time INTEGER,
+                active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+            )`,
+
             // Guild ayarları tablosu
             `CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id TEXT PRIMARY KEY,
@@ -308,6 +323,112 @@ const guilds = {
     }
 };
 
+// Ceza işlemleri
+const punishments = {
+    // Ceza ekle
+    addPunishment: async (guildId, userId, moderatorId, type, reason, duration = null, endTime = null) => {
+        try {
+            await guilds.setupGuild(guildId);
+            const result = await run(
+                'INSERT INTO punishments (guild_id, user_id, moderator_id, type, reason, duration, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [guildId, userId, moderatorId, type, reason, duration, endTime]
+            );
+            return result.lastID;
+        } catch (error) {
+            console.error(`Ceza ekleme hatası:`, error);
+            throw error;
+        }
+    },
+    
+    // Aktif cezaları getir
+    getActivePunishments: async (guildId) => {
+        try {
+            return all(
+                'SELECT * FROM punishments WHERE guild_id = ? AND active = 1 ORDER BY created_at DESC',
+                [guildId]
+            );
+        } catch (error) {
+            console.error(`Aktif cezaları getirme hatası:`, error);
+            return [];
+        }
+    },
+    
+    // Kullanıcının aktif cezalarını getir
+    getUserActivePunishments: async (guildId, userId) => {
+        try {
+            return all(
+                'SELECT * FROM punishments WHERE guild_id = ? AND user_id = ? AND active = 1 ORDER BY created_at DESC',
+                [guildId, userId]
+            );
+        } catch (error) {
+            console.error(`Kullanıcı aktif cezalarını getirme hatası:`, error);
+            return [];
+        }
+    },
+    
+    // Kullanıcının tüm ceza geçmişini getir
+    getUserPunishmentHistory: async (guildId, userId) => {
+        try {
+            return all(
+                'SELECT * FROM punishments WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC',
+                [guildId, userId]
+            );
+        } catch (error) {
+            console.error(`Kullanıcı ceza geçmişini getirme hatası:`, error);
+            return [];
+        }
+    },
+    
+    // Belirli bir cezayı getir
+    getPunishment: async (punishmentId, guildId) => {
+        try {
+            return get(
+                'SELECT * FROM punishments WHERE id = ? AND guild_id = ?',
+                [punishmentId, guildId]
+            );
+        } catch (error) {
+            console.error(`Ceza getirme hatası:`, error);
+            return null;
+        }
+    },
+    
+    // Cezayı kaldır (active = 0 yap)
+    removePunishment: async (punishmentId, guildId) => {
+        try {
+            return run(
+                'UPDATE punishments SET active = 0 WHERE id = ? AND guild_id = ?',
+                [punishmentId, guildId]
+            );
+        } catch (error) {
+            console.error(`Ceza kaldırma hatası:`, error);
+            throw error;
+        }
+    },
+    
+    // Süresi dolmuş cezaları kontrol et ve kaldır
+    checkExpiredPunishments: async () => {
+        try {
+            const now = Date.now();
+            const expiredPunishments = await all(
+                'SELECT * FROM punishments WHERE active = 1 AND end_time IS NOT NULL AND end_time <= ?',
+                [now]
+            );
+            
+            for (const punishment of expiredPunishments) {
+                await run(
+                    'UPDATE punishments SET active = 0 WHERE id = ?',
+                    [punishment.id]
+                );
+            }
+            
+            return expiredPunishments;
+        } catch (error) {
+            console.error(`Süresi dolmuş cezaları kontrol hatası:`, error);
+            return [];
+        }
+    }
+};
+
 // Uyarı işlemleri
 const warnings = {
     // Uyarı ekle
@@ -477,6 +598,7 @@ module.exports = {
     run,
     get,
     all,
+    punishments,
     logs,
     guilds,
     warnings,
