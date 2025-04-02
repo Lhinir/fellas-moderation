@@ -1,6 +1,6 @@
 // src/events/interactionCreate.js
 
-// .env dosyasından rol ID'lerini al
+// Botun komutlarını kullanma yetkisine sahip rollerin ID'leri
 const AUTHORIZED_ROLE_IDS = [
     process.env.AUTHORIZED_ROLE_ID_1,
     process.env.AUTHORIZED_ROLE_ID_2
@@ -95,6 +95,16 @@ module.exports = {
 
             console.log(`[Button] ${interaction.user.tag} used: ${interaction.customId}`);
             
+            // Ceza butonları için özel işleme
+            if (interaction.customId.startsWith('punishment_button_')) {
+                const punishmentGive = interaction.client.buttons.get('punishment_give');
+                if (punishmentGive && typeof punishmentGive.handlePunishmentButton === 'function') {
+                    await punishmentGive.handlePunishmentButton(interaction);
+                    return;
+                }
+            }
+            
+            // Diğer butonlar için normal işleme
             const button = interaction.client.buttons.get(interaction.customId);
             
             if (!button) {

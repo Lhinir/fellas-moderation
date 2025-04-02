@@ -1,6 +1,6 @@
 // src/buttons/punishment_give.js
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const database = require('../modules/database');
 
 // Bir kere ve global olarak tanımlanmış bir listener flag'i
@@ -9,6 +9,7 @@ let modalListenerAdded = false;
 module.exports = {
     customId: 'punishment_give',
     
+    // Ana punishment_give butonu için işleyici
     async execute(interaction) {
         // Yetkiyi kontrol et
         if (!interaction.member.permissions.has('ModerateMembers')) {
@@ -201,62 +202,6 @@ module.exports = {
                 components: [row1, row2, row3],
                 ephemeral: true
             });
-            
-            // Buton tıklamalarını tek bir fonksiyonla ele almak için bir collector
-            const filter = i => 
-                i.customId.startsWith('punishment_button_') && 
-                i.user.id === interaction.user.id;
-            
-            const collector = interaction.channel.createMessageComponentCollector({ 
-                filter, 
-                time: 60000,
-                max: 1 // Sadece bir tıklamaya izin ver
-            });
-            
-            collector.on('collect', async (i) => {
-                // Buton ID'sinden ceza türünü al
-                const punishmentType = i.customId.replace('punishment_button_', '');
-                
-                // Ceza bilgilerini sormak için modal oluştur
-                const modal = new ModalBuilder()
-                    .setCustomId(`punishment_modal_${punishmentType}`)
-                    .setTitle('Ceza Detayları');
-                
-                const userIdInput = new TextInputBuilder()
-                    .setCustomId('userId')
-                    .setLabel('Kullanıcı ID')
-                    .setPlaceholder('Cezalandırılacak kullanıcının ID\'si')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-                
-                const reasonInput = new TextInputBuilder()
-                    .setCustomId('reason')
-                    .setLabel('Sebep')
-                    .setPlaceholder('Cezalandırma sebebi')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true);
-                
-                const firstActionRow = new ActionRowBuilder().addComponents(userIdInput);
-                const secondActionRow = new ActionRowBuilder().addComponents(reasonInput);
-                
-                modal.addComponents(firstActionRow, secondActionRow);
-                
-                // Süre gerektiren cezalar için süre input'u ekle
-                if (punishmentType === 'tempban' || punishmentType === 'mute') {
-                    const durationInput = new TextInputBuilder()
-                        .setCustomId('duration')
-                        .setLabel('Süre (örn: 1d, 12h, 30m)')
-                        .setPlaceholder('1d (1 gün), 12h (12 saat), 30m (30 dakika)')
-                        .setStyle(TextInputStyle.Short)
-                        .setRequired(true);
-                    
-                    const thirdActionRow = new ActionRowBuilder().addComponents(durationInput);
-                    modal.addComponents(thirdActionRow);
-                }
-                
-                // Modal'ı göster - deferUpdate olmadan
-                await i.showModal(modal);
-            });
         } catch (error) {
             console.error('Ceza verme paneli hatası:', error);
             await interaction.reply({
@@ -264,9 +209,65 @@ module.exports = {
                 ephemeral: true
             });
         }
+    },
+    
+    // Alt ceza butonları (punishment_button_XXX) için işleyici
+    async handlePunishmentButton(interaction) {
+        try {
+            // Buton ID'sinden ceza türünü al
+            const punishmentType = interaction.customId.replace('punishment_button_', '');
+            
+            // Ceza bilgilerini sormak için modal oluştur
+            const modal = new ModalBuilder()
+                .setCustomId(`punishment_modal_${punishmentType}`)
+                .setTitle('Ceza Detayları');
+            
+            const userIdInput = new TextInputBuilder()
+                .setCustomId('userId')
+                .setLabel('Kullanıcı ID')
+                .setPlaceholder('Cezalandırılacak kullanıcının ID\'si')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+            
+            const reasonInput = new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel('Sebep')
+                .setPlaceholder('Cezalandırma sebebi')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+            
+            const firstActionRow = new ActionRowBuilder().addComponents(userIdInput);
+            const secondActionRow = new ActionRowBuilder().addComponents(reasonInput);
+            
+            modal.addComponents(firstActionRow, secondActionRow);
+            
+            // Süre gerektiren cezalar için süre input'u ekle
+            if (punishmentType === 'tempban' || punishmentType === 'mute') {
+                const durationInput = new TextInputBuilder()
+                    .setCustomId('duration')
+                    .setLabel('Süre (örn: 1d, 12h, 30m)')
+                    .setPlaceholder('1d (1 gün), 12h (12 saat), 30m (30 dakika)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true);
+                
+                const thirdActionRow = new ActionRowBuilder().addComponents(durationInput);
+                modal.addComponents(thirdActionRow);
+            }
+            
+            // Modal'ı göster - deferUpdate olmadan
+            await interaction.showModal(modal);
+        } catch (error) {
+            console.error('Ceza butonu hatası:', error);
+            
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({
+                    content: 'Ceza detayları açılırken bir hata oluştu.',
+                    ephemeral: true
+                });
+            }
+        }
     }
 };
-
 
 // Süre formatını (1d, 12h, 30m) milisaniyeye çevirme fonksiyonu
 function parseDuration(durationStr) {
