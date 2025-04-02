@@ -114,6 +114,7 @@ class DiscordLogger {
         });
     }
 
+    /*
     async logMessageEdit(oldMessage, newMessage) {
         // Sistem mesajları veya botların mesajlarını loglamayı atla
         if (oldMessage.system || oldMessage.author.bot) return;
@@ -144,6 +145,7 @@ class DiscordLogger {
             editedAt: new Date().toISOString()
         });
     }
+    */
 
     async logRoleChanges(oldMember, newMember) {
         const logChannel = await this.getLogChannel();
