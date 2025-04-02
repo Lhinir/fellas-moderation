@@ -1,128 +1,137 @@
-// src/events/messageLogs.js
-const { Events, AuditLogEvent } = require('discord.js');
-const logEvents = require('../modules/log-events');
+// src/events/messageLog.js
+
+const { Events, EmbedBuilder } = require('discord.js');
+const database = require('../modules/database');
 
 module.exports = {
     name: Events.ClientReady,
     once: true,
-    async execute(client) {
-        console.log('Mesaj log dinleyicileri başlatılıyor...');
+    execute(client) {
+        // Silinen mesaj önbelleği - Mesaj düzenlemelerini takip etmek için
+        const editedMessages = new Map();
         
-        // Mesaj silme
-        client.on(Events.MessageDelete, async message => {
-            // Geçersiz veya bot mesajlarını kontrol et
-            if (!message.guild || message.author?.bot) return;
-            
+        // Mesaj silme olayı
+        client.on(Events.MessageDelete, async (message) => {
             try {
-                // Ek bilgileri topla
-                const attachments = message.attachments.size > 0 
-                    ? message.attachments.map(a => `[${a.name || 'Dosya'}](${a.proxyURL})`).join(', ')
-                    : null;
-                
-                // Mesaj içeriğini formatla
-                let content = message.content || 'İçerik yok';
-                
-                // Uzun mesajları kısalt
-                if (content.length > 1024) {
-                    content = content.slice(0, 1021) + '...';
-                }
-                
-                // Fields oluştur
-                const fields = [
-                    { name: 'Yazar', value: message.author ? `<@${message.author.id}> (${message.author.tag})` : 'Bilinmiyor', inline: true },
-                    { name: 'Kanal', value: `<#${message.channel.id}>`, inline: true },
-                    { name: 'Mesaj ID', value: message.id, inline: true }
-                ];
-                
-                if (content) {
-                    fields.push({ name: 'İçerik', value: content });
-                }
-                
-                if (attachments) {
-                    fields.push({ name: 'Dosyalar', value: attachments });
-                }
-                
-                // Düzeltildi: message.guild ekledik (guild değişkeni yerine)
-                await logEvents.sendLog(message.guild, 'message', 'Bir mesaj silindi.', {
-                    color: '#ff0000',
-                    title: '🗑️ Mesaj Silindi',
-                    fields: fields,
-                    timestamp: new Date()
-                });
-            } catch (error) {
-                console.error('Mesaj silme log hatası:', error);
-            }
-        });
-        
-        // Mesaj güncelleme
-        client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
-            // Geçersiz veya bot mesajlarını kontrol et
-            if (!oldMessage.guild || oldMessage.author?.bot) return;
-            
-            // İçerik değişmediyse loglama
-            if (oldMessage.content === newMessage.content) return;
+                // Mesaj bir bottan mı geliyor kontrol et
+                if (message.author && message.author.bot) return;
 
-            // Mesaj bir bottan mı geliyor kontrol et - Botların mesajlarını log'lama
-            if (newMessage.author && newMessage.author.bot) return;
-            
-            try {
-                // Eski ve yeni içeriği formatla
-                let oldContent = oldMessage.content || 'İçerik yok';
-                let newContent = newMessage.content || 'İçerik yok';
+                // DM mesajlarını yoksay
+                if (!message.guild) return;
+
+                // Log kanalını kontrol et
+                const logChannelId = await database.logs.getLogChannel(message.guild.id, 'message');
+                if (!logChannelId) return;
                 
-                // Uzun mesajları kısalt
-                if (oldContent.length > 1024) {
-                    oldContent = oldContent.slice(0, 1021) + '...';
+                // Log kanalını bul
+                const logChannel = await message.guild.channels.fetch(logChannelId).catch(() => null);
+                if (!logChannel) return;
+                
+                // Embed oluştur
+                const embed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('Mesaj Silindi')
+                    .setDescription(`<#${message.channel.id}> kanalında bir mesaj silindi.`)
+                    .addFields(
+                        { name: 'Yazan', value: `<@${message.author.id}> (${message.author.tag})` },
+                        { name: 'Kanal', value: `<#${message.channel.id}>` }
+                    )
+                    .setFooter({ text: `Kullanıcı ID: ${message.author.id} • Mesaj ID: ${message.id}` })
+                    .setTimestamp();
+                
+                // Mesaj içeriği varsa ekle
+                if (message.content) {
+                    embed.addFields({ name: 'İçerik', value: message.content.length > 1024 ? message.content.substring(0, 1021) + '...' : message.content });
                 }
                 
-                if (newContent.length > 1024) {
-                    newContent = newContent.slice(0, 1021) + '...';
+                // Mesajda resim varsa ekle
+                if (message.attachments.size > 0) {
+                    const attachmentList = message.attachments.map(a => `[${a.name}](${a.url})`).join('\n');
+                    embed.addFields({ name: 'Ekler', value: attachmentList });
                 }
                 
-                // Düzeltildi: Eksik description parametresi eklendi
-                await logEvents.sendLog(newMessage.guild, 'message', 'Bir mesaj düzenlendi.', {
-                    color: '#ffaa00',
-                    title: '✏️ Mesaj Düzenlendi',
-                    fields: [
-                        { name: 'Yazar', value: newMessage.author ? `<@${newMessage.author.id}> (${newMessage.author.tag})` : 'Bilinmiyor', inline: true },
-                        { name: 'Kanal', value: `<#${newMessage.channel.id}>`, inline: true },
-                        { name: 'Mesaj Linki', value: `[Mesaja Git](${newMessage.url})`, inline: true },
-                        { name: 'Önceki İçerik', value: oldContent },
-                        { name: 'Yeni İçerik', value: newContent }
-                    ],
-                    timestamp: new Date()
-                });
+                // Log gönder
+                await logChannel.send({ embeds: [embed] }).catch(console.error);
+                
             } catch (error) {
-                console.error('Mesaj güncelleme log hatası:', error);
+                console.error('Mesaj silme logu gönderilirken hata:', error);
             }
         });
         
-        // Toplu mesaj silme
-        /*
-        client.on(Events.MessageBulkDelete, async messages => {
-            if (messages.size === 0) return;
-            const firstMessage = messages.first();
-            if (!firstMessage.guild) return;
-            
+        // Mesaj düzenleme olayı
+        client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
             try {
-                const channel = firstMessage.channel;
+                // Eğer mesaj içerikleri aynıysa yoksay
+                if (oldMessage.content === newMessage.content) return;
                 
-                // Düzeltildi: firstMessage.guild kullanıldı ve count yerine messages.size eklendi
-                await logEvents.sendLog(firstMessage.guild, 'message', `**${messages.size}** mesaj <#${channel.id}> kanalında silindi.`, {
-                    color: '#ff0000',
-                    title: '🗑️ Toplu Mesaj Silindi',
-                    fields: [
-                        { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
-                        { name: 'Mesaj Sayısı', value: messages.size.toString(), inline: true }
-                    ],
-                    timestamp: new Date()
-                });
+                // Mesaj bir bottan mı geliyor kontrol et
+                if (newMessage.author && newMessage.author.bot) return;
+                
+                // DM mesajlarını yoksay
+                if (!newMessage.guild) return;
+                
+                // Aynı mesajın kısa süre içinde birden fazla kez düzenlenmesini önle
+                const messageId = newMessage.id;
+                const now = Date.now();
+                const lastEditTime = editedMessages.get(messageId);
+                
+                if (lastEditTime && now - lastEditTime < 10000) { // 10 saniye içinde tekrar düzenlendi mi kontrol et
+                    return; // Kısa sürede tekrar düzenlendiyse log gönderme
+                }
+                
+                // Mesajın düzenlenme zamanını kaydet
+                editedMessages.set(messageId, now);
+                
+                // 1 dakika sonra mesajı önbellekten temizle (bellek tasarrufu için)
+                setTimeout(() => {
+                    editedMessages.delete(messageId);
+                }, 60000);
+                
+                // Log kanalını kontrol et
+                const logChannelId = await database.logs.getLogChannel(newMessage.guild.id, 'message');
+                if (!logChannelId) return;
+                
+                // Log kanalını bul
+                const logChannel = await newMessage.guild.channels.fetch(logChannelId).catch(() => null);
+                if (!logChannel) return;
+                
+                // Embed oluştur
+                const embed = new EmbedBuilder()
+                    .setColor('#FFCC00')
+                    .setTitle('Mesaj Düzenlendi')
+                    .setDescription(`<#${newMessage.channel.id}> kanalında bir mesaj düzenlendi.`)
+                    .addFields(
+                        { name: 'Yazan', value: `<@${newMessage.author.id}> (${newMessage.author.tag})` },
+                        { name: 'Kanal', value: `<#${newMessage.channel.id}>` },
+                        { name: 'Mesaja Git', value: `[Tıkla](${newMessage.url})` }
+                    )
+                    .setFooter({ text: `Kullanıcı ID: ${newMessage.author.id} • Mesaj ID: ${newMessage.id}` })
+                    .setTimestamp();
+                
+                // Eski mesaj içeriği varsa ekle
+                if (oldMessage.content) {
+                    embed.addFields({ 
+                        name: 'Eski İçerik', 
+                        value: oldMessage.content.length > 1024 ? oldMessage.content.substring(0, 1021) + '...' : oldMessage.content 
+                    });
+                }
+                
+                // Yeni mesaj içeriği varsa ekle
+                if (newMessage.content) {
+                    embed.addFields({ 
+                        name: 'Yeni İçerik', 
+                        value: newMessage.content.length > 1024 ? newMessage.content.substring(0, 1021) + '...' : newMessage.content 
+                    });
+                }
+                
+                // Log gönder
+                await logChannel.send({ embeds: [embed] }).catch(console.error);
+                
             } catch (error) {
-                console.error('Toplu mesaj silme log hatası:', error);
+                console.error('Mesaj düzenleme logu gönderilirken hata:', error);
             }
         });
-        */
         
-        console.log('Mesaj log dinleyicileri başlatıldı!');
+        console.log('Mesaj log sistemi başlatıldı.');
     }
 };
