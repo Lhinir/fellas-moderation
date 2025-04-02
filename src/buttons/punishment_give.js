@@ -52,13 +52,13 @@ module.exports = {
                             {
                                 label: 'Susturma',
                                 description: 'Kullanıcıyı belirli bir süre için susturur',
-                                value: 'mute',
+                                value: 'sustur',
                                 emoji: '🔇'
                             },
                             {
                                 label: 'Uyarı',
                                 description: 'Kullanıcıya uyarı verir',
-                                value: 'warn',
+                                value: 'uyar',
                                 emoji: '⚠️'
                             }
                         ])
@@ -76,7 +76,7 @@ module.exports = {
             
             // Bilgi mesajı
             await interaction.reply({
-                content: '⚠️ **Not:** Bu menü üzerinden ceza vermek yerine, daha gelişmiş seçenekler için aşağıdaki slash komutlarını kullanmanızı öneririz:\n• `/ban` - Kalıcı yasak\n• `/tempban` - Geçici yasak\n• `/mute` - Susturma\n• `/warn` - Uyarı',
+                content: '⚠️ **Not:** Bu menü üzerinden ceza vermek yerine, daha gelişmiş seçenekler için aşağıdaki slash komutlarını kullanmanızı öneririz:\n• `/ban` - Kalıcı yasak\n• `/tempban` - Geçici yasak\n• `/sustur` - Susturma\n• `/uyar` - Uyarı',
                 embeds: [embed],
                 components: [row1, row2],
                 ephemeral: true
@@ -272,8 +272,8 @@ function getPunishmentTypeName(type) {
     switch (type) {
         case 'ban': return '🔨 Ban';
         case 'tempban': return '⏱️ Geçici Ban';
-        case 'mute': return '🔇 Susturma';
-        case 'warn': return '⚠️ Uyarı';
+        case 'sustur': return '🔇 Susturma';
+        case 'uyar': return '⚠️ Uyarı';
         default: return type;
     }
 }
@@ -296,7 +296,7 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 
                 return true;
                 
-            case 'mute':
+            case 'sustur':
                 const member = await guild.members.fetch(user.id).catch(() => null);
                 
                 if (!member) {
@@ -318,7 +318,7 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 await member.timeout(timeoutDuration, reason);
                 return true;
                 
-            case 'warn':
+            case 'uyar':
                 // Uyarı sisteminizi kullanabilirsiniz
                 await database.warnings.addWarning(
                     interaction.guild.id,
