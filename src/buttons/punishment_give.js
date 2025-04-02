@@ -3,6 +3,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
 const database = require('../modules/database');
 
+// Bir kere ve global olarak tanımlanmış bir listener flag'i
+let modalListenerAdded = false;
+
 module.exports = {
     customId: 'punishment_give',
     
@@ -16,6 +19,128 @@ module.exports = {
         }
         
         try {
+            // Modal listener'ı henüz eklenmemişse, bir kere ekle
+            if (!modalListenerAdded) {
+                interaction.client.on('interactionCreate', async (modalInteraction) => {
+                    if (!modalInteraction.isModalSubmit()) return;
+                    
+                    const modalCustomId = modalInteraction.customId;
+                    if (!modalCustomId.startsWith('punishment_modal_')) return;
+                    
+                    // Modal etkileşimini hemen defer et
+                    try {
+                        await modalInteraction.deferReply({ ephemeral: true }).catch(err => {
+                            console.error("Modal defer hatası:", err);
+                            return; // Eğer defer edilemezse, işlemi durdur
+                        });
+                        
+                        // Eğer deferReply başarısız olduysa, işlemi durdur
+                        if (!modalInteraction.deferred) return;
+                        
+                        const punishmentType = modalCustomId.replace('punishment_modal_', '');
+                        const userId = modalInteraction.fields.getTextInputValue('userId');
+                        const reason = modalInteraction.fields.getTextInputValue('reason');
+                        let duration = null;
+                        let endTime = null;
+                        
+                        if (punishmentType === 'tempban' || punishmentType === 'mute') {
+                            duration = modalInteraction.fields.getTextInputValue('duration');
+                            
+                            // Süreyi milisaniyeye çevir
+                            const durationMs = parseDuration(duration);
+                            if (durationMs === null) {
+                                return modalInteraction.editReply({ content: 'Geçersiz süre formatı. Örnek: 1d (1 gün), 12h (12 saat), 30m (30 dakika)' });
+                            }
+                            
+                            endTime = Date.now() + durationMs;
+                        }
+                        
+                        // Kullanıcıyı kontrol et
+                        const user = await modalInteraction.client.users.fetch(userId).catch(() => null);
+                        
+                        if (!user) {
+                            return modalInteraction.editReply({ content: 'Geçerli bir kullanıcı ID\'si girmelisiniz.' });
+                        }
+                        
+                        // Cezayı uygula
+                        const success = await applyPunishment(
+                            modalInteraction, 
+                            punishmentType, 
+                            user, 
+                            reason,
+                            duration,
+                            endTime
+                        );
+                        
+                        if (!success) {
+                            return;
+                        }
+                        
+                        // Cezayı veritabanına kaydet
+                        await database.punishments.addPunishment(
+                            modalInteraction.guild.id,
+                            user.id,
+                            modalInteraction.user.id,
+                            punishmentType,
+                            reason,
+                            duration,
+                            endTime
+                        );
+                        
+                        // Başarılı mesajı
+                        const successEmbed = new EmbedBuilder()
+                            .setColor('#2ecc71')
+                            .setTitle('✅ Ceza Uygulandı')
+                            .setDescription(`**${user.tag}** kullanıcısına başarıyla ceza uygulandı.`)
+                            .addFields(
+                                { name: 'Kullanıcı', value: `<@${user.id}> (${user.tag})`, inline: true },
+                                { name: 'Ceza Türü', value: getPunishmentTypeName(punishmentType), inline: true },
+                                { name: 'Yetkili', value: `<@${modalInteraction.user.id}> (${modalInteraction.user.tag})`, inline: false },
+                                { name: 'Sebep', value: reason, inline: false }
+                            )
+                            .setFooter({ text: 'Ceza Sistemi', iconURL: modalInteraction.guild.iconURL() })
+                            .setTimestamp();
+                        
+                        if (duration) {
+                            successEmbed.addFields({ name: 'Süre', value: duration, inline: true });
+                            successEmbed.addFields({ name: 'Bitiş', value: `<t:${Math.floor(endTime / 1000)}:F>`, inline: true });
+                        }
+                        
+                        // Butonlar
+                        const row = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('mod_punishment_system')
+                                    .setLabel('Ceza Sistemine Dön')
+                                    .setStyle(ButtonStyle.Secondary)
+                                    .setEmoji('⬅️')
+                            );
+                        
+                        await modalInteraction.editReply({ embeds: [successEmbed], components: [row] });
+                        
+                        // Log kanalına bildir
+                        await sendPunishmentLog(modalInteraction, punishmentType, user, reason, duration, endTime);
+                        
+                    } catch (error) {
+                        console.error('Ceza verme hatası:', error);
+                        
+                        if (modalInteraction.deferred) {
+                            await modalInteraction.editReply({ 
+                                content: 'Ceza uygulanırken bir hata oluştu: ' + error.message 
+                            }).catch(console.error);
+                        } else if (!modalInteraction.replied) {
+                            await modalInteraction.reply({ 
+                                content: 'Ceza uygulanırken bir hata oluştu: ' + error.message,
+                                ephemeral: true 
+                            }).catch(console.error);
+                        }
+                    }
+                });
+                
+                // Flag'i true yap, böylece bir daha dinleyici eklenmez
+                modalListenerAdded = true;
+            }
+            
             // Ceza verme seçeneklerini göster
             const embed = new EmbedBuilder()
                 .setColor('#e74c3c')
@@ -88,7 +213,6 @@ module.exports = {
             const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
             
             collector.on('collect', async (i) => {
-                // DÜZELTİLDİ: deferUpdate() çağrısını kaldırdık
                 const selectedPunishmentType = i.values[0];
                 
                 // Ceza bilgilerini sormak için modal oluştur
@@ -128,115 +252,12 @@ module.exports = {
                     modal.addComponents(thirdActionRow);
                 }
                 
-                // Modal'ı göster
+                // Modal'ı göster - deferUpdate olmadan
                 await i.showModal(modal);
                 
                 // Collector'ı durdur
                 collector.stop();
             });
-            
-            // Modal yanıtını işleme
-            interaction.client.on('interactionCreate', async (modalInteraction) => {
-                if (!modalInteraction.isModalSubmit()) return;
-                
-                const modalCustomId = modalInteraction.customId;
-                if (!modalCustomId.startsWith('punishment_modal_')) return;
-                
-                if (modalInteraction.user.id !== interaction.user.id) return;
-                
-                await modalInteraction.deferReply({ ephemeral: true });
-                
-                const punishmentType = modalCustomId.replace('punishment_modal_', '');
-                const userId = modalInteraction.fields.getTextInputValue('userId');
-                const reason = modalInteraction.fields.getTextInputValue('reason');
-                let duration = null;
-                let endTime = null;
-                
-                if (punishmentType === 'tempban' || punishmentType === 'mute') {
-                    duration = modalInteraction.fields.getTextInputValue('duration');
-                    
-                    // Süreyi milisaniyeye çevir
-                    const durationMs = parseDuration(duration);
-                    if (durationMs === null) {
-                        return modalInteraction.editReply({ content: 'Geçersiz süre formatı. Örnek: 1d (1 gün), 12h (12 saat), 30m (30 dakika)' });
-                    }
-                    
-                    endTime = Date.now() + durationMs;
-                }
-                
-                try {
-                    // Kullanıcıyı kontrol et
-                    const user = await interaction.client.users.fetch(userId).catch(() => null);
-                    
-                    if (!user) {
-                        return modalInteraction.editReply({ content: 'Geçerli bir kullanıcı ID\'si girmelisiniz.' });
-                    }
-                    
-                    // Cezayı uygula
-                    const success = await applyPunishment(
-                        modalInteraction, 
-                        punishmentType, 
-                        user, 
-                        reason,
-                        duration,
-                        endTime
-                    );
-                    
-                    if (!success) {
-                        return;
-                    }
-                    
-                    // Cezayı veritabanına kaydet
-                    await database.punishments.addPunishment(
-                        modalInteraction.guild.id,
-                        user.id,
-                        modalInteraction.user.id,
-                        punishmentType,
-                        reason,
-                        duration,
-                        endTime
-                    );
-                    
-                    // Başarılı mesajı
-                    const successEmbed = new EmbedBuilder()
-                        .setColor('#2ecc71')
-                        .setTitle('✅ Ceza Uygulandı')
-                        .setDescription(`**${user.tag}** kullanıcısına başarıyla ceza uygulandı.`)
-                        .addFields(
-                            { name: 'Kullanıcı', value: `<@${user.id}> (${user.tag})`, inline: true },
-                            { name: 'Ceza Türü', value: getPunishmentTypeName(punishmentType), inline: true },
-                            { name: 'Yetkili', value: `<@${modalInteraction.user.id}> (${modalInteraction.user.tag})`, inline: false },
-                            { name: 'Sebep', value: reason, inline: false }
-                        )
-                        .setFooter({ text: 'Ceza Sistemi', iconURL: modalInteraction.guild.iconURL() })
-                        .setTimestamp();
-                    
-                    if (duration) {
-                        successEmbed.addFields({ name: 'Süre', value: duration, inline: true });
-                        successEmbed.addFields({ name: 'Bitiş', value: `<t:${Math.floor(endTime / 1000)}:F>`, inline: true });
-                    }
-                    
-                    // Butonlar
-                    const row = new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('mod_punishment_system')
-                                .setLabel('Ceza Sistemine Dön')
-                                .setStyle(ButtonStyle.Secondary)
-                                .setEmoji('⬅️')
-                        );
-                    
-                    await modalInteraction.editReply({ embeds: [successEmbed], components: [row] });
-                    
-                    // Log kanalına bildir
-                    await sendPunishmentLog(modalInteraction, punishmentType, user, reason, duration, endTime);
-                    
-                } catch (error) {
-                    console.error('Ceza verme hatası:', error);
-                    await modalInteraction.editReply({ content: 'Ceza uygulanırken bir hata oluştu: ' + error.message });
-                }
-            });
-            
         } catch (error) {
             console.error('Ceza verme paneli hatası:', error);
             await interaction.reply({
@@ -290,10 +311,6 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 
             case 'tempban':
                 await guild.members.ban(user.id, { reason: `${reason} (Süre: ${duration})` });
-                
-                // Zamanlanmış görev olarak ban kaldırma işlemi eklenebilir
-                // Bunu yapmak için bir zamanlayıcı veya external job scheduler kullanılabilir
-                
                 return true;
                 
             case 'mute':
@@ -304,11 +321,8 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                     return false;
                 }
                 
-                // Timeout uygula (Discord'un kendi timeout sistemi)
-                // endTime'ı Date.now() çıkararak süreyi milisaniye cinsinden bul
                 const timeoutDuration = endTime - Date.now();
                 
-                // Discord API sınırlaması: max 28 gün
                 const maxTimeout = 28 * 24 * 60 * 60 * 1000; // 28 gün
                 if (timeoutDuration > maxTimeout) {
                     await interaction.editReply({ content: 'Discord API sınırlaması nedeniyle en fazla 28 gün susturma uygulayabilirsiniz.' });
@@ -319,7 +333,6 @@ async function applyPunishment(interaction, type, user, reason, duration, endTim
                 return true;
                 
             case 'warn':
-                // Uyarı sisteminizi kullanabilirsiniz
                 await database.warnings.addWarning(
                     interaction.guild.id,
                     user.id,
