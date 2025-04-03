@@ -29,17 +29,17 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_ban_manage')
                         .setLabel('Ban Yönetimi')
-                        .setStyle(4) // Danger
+                        .setStyle(2) // Danger
                         .setEmoji('🔨'),
                     new ButtonBuilder()
                         .setCustomId('mod_mute_manage')
                         .setLabel('Mute Yönetimi')
-                        .setStyle(1) // Primary
+                        .setStyle(2) // Primary
                         .setEmoji('🔇'),
                     new ButtonBuilder()
                         .setCustomId('mod_warning_manage')
                         .setLabel('Uyarı Yönetimi')
-                        .setStyle(3) // Success
+                        .setStyle(2) // Success
                         .setEmoji('⚠️')
                 );
                 
@@ -48,12 +48,12 @@ module.exports = {
                     new ButtonBuilder()
                         .setCustomId('mod_punishment_system')
                         .setLabel('Ceza Sistemi')
-                        .setStyle(4) // Danger
+                        .setStyle(2) // Danger
                         .setEmoji('🚓'),
                     new ButtonBuilder()
                         .setCustomId('mod_log_settings')
                         .setLabel('Log Ayarları')
-                        .setStyle(3) // Success
+                        .setStyle(2) // Success
                         .setEmoji('📋'),
                     new ButtonBuilder()
                         .setCustomId('panel_main')
