@@ -1,8 +1,6 @@
 // src/events/memberLogs.js
-
 const { Events, EmbedBuilder, AuditLogEvent } = require('discord.js');
 const database = require('../modules/database');
-
 module.exports = {
     name: Events.ClientReady,
     once: true,
@@ -42,7 +40,6 @@ module.exports = {
                 console.error('Üye ayrılma logu gönderilirken hata:', error);
             }
         });
-
         // Rol Değişikliği Olayı
         client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
             try {
@@ -55,65 +52,77 @@ module.exports = {
                 const logChannel = await newMember.guild.channels.fetch(logChannelId).catch(() => null);
                 if (!logChannel) return;
                 
+                // Değişiklikleri belirle
+                const roleChanged = !oldMember.roles.cache.equals(newMember.roles.cache);
+                const nicknameChanged = oldMember.nickname !== newMember.nickname;
+                
                 // Rol değişikliği kontrolü
-                const oldRoles = oldMember.roles.cache;
-                const newRoles = newMember.roles.cache;
-                
-                // Eklenen roller
-                const addedRoles = newRoles.filter(role => !oldRoles.has(role.id));
-                
-                // Çıkarılan roller
-                const removedRoles = oldRoles.filter(role => !newRoles.has(role.id));
-                
-                // Roller değiştiyse log gönder
-                if (addedRoles.size > 0 || removedRoles.size > 0) {
-                    const roleUpdateEmbed = new EmbedBuilder()
-                        .setColor('#FFA500')
-                        .setTitle('Üye Rolleri Güncellendi')
-                        .setDescription(`${newMember.user.tag} kullanıcısının rolleri değiştirildi.`)
-                        .addFields(
-                            { name: 'Kullanıcı', value: `<@${newMember.user.id}> (${newMember.user.id})` }
-                        )
-                        .setThumbnail(newMember.user.displayAvatarURL())
-                        .setTimestamp();
+                if (roleChanged) {
+                    const oldRoles = oldMember.roles.cache;
+                    const newRoles = newMember.roles.cache;
                     
-                    if (addedRoles.size > 0) {
-                        roleUpdateEmbed.addFields({
-                            name: '✅ Eklenen Roller',
-                            value: addedRoles.map(r => `<@&${r.id}>`).join(', ')
-                        });
-                    }
+                    // Eklenen roller
+                    const addedRoles = newRoles.filter(role => !oldRoles.has(role.id));
                     
-                    if (removedRoles.size > 0) {
-                        roleUpdateEmbed.addFields({
-                            name: '❌ Çıkarılan Roller',
-                            value: removedRoles.map(r => `<@&${r.id}>`).join(', ')
-                        });
-                    }
+                    // Çıkarılan roller
+                    const removedRoles = oldRoles.filter(role => !newRoles.has(role.id));
                     
-                    try {
-                        // Son değişikliği yapan kişiyi bulmaya çalış
-                        const auditLogs = await newMember.guild.fetchAuditLogs({
-                            limit: 1,
-                            type: AuditLogEvent.MemberRoleUpdate
-                        });
+                    // Roller değiştiyse log gönder
+                    if (addedRoles.size > 0 || removedRoles.size > 0) {
+                        const roleUpdateEmbed = new EmbedBuilder()
+                            .setColor('#FFA500')
+                            .setTitle('Üye Rolleri Güncellendi')
+                            .setDescription(`${newMember.user.tag} kullanıcısının rolleri değiştirildi.`)
+                            .addFields(
+                                { name: 'Kullanıcı', value: `<@${newMember.user.id}> (${newMember.user.id})` }
+                            )
+                            .setThumbnail(newMember.user.displayAvatarURL())
+                            .setTimestamp();
                         
-                        const roleLog = auditLogs.entries.first();
-                        if (roleLog && roleLog.target.id === newMember.id && roleLog.createdTimestamp > (Date.now() - 5000)) {
+                        if (addedRoles.size > 0) {
                             roleUpdateEmbed.addFields({
-                                name: 'Değiştiren Kullanıcı',
-                                value: `<@${roleLog.executor.id}> (${roleLog.executor.tag})`
+                                name: '✅ Eklenen Roller',
+                                value: addedRoles.map(r => `<@&${r.id}>`).join(', ')
                             });
                         }
-                    } catch (error) {
-                        console.error('Audit log erişim hatası:', error);
+                        
+                        if (removedRoles.size > 0) {
+                            roleUpdateEmbed.addFields({
+                                name: '❌ Çıkarılan Roller',
+                                value: removedRoles.map(r => `<@&${r.id}>`).join(', ')
+                            });
+                        }
+                        
+                        try {
+                            // Son değişikliği yapan kişiyi bulmaya çalış
+                            const auditLogs = await newMember.guild.fetchAuditLogs({
+                                limit: 1,
+                                type: AuditLogEvent.MemberRoleUpdate
+                            });
+                            
+                            const roleLog = auditLogs.entries.first();
+                            if (roleLog && roleLog.target.id === newMember.id && roleLog.createdTimestamp > (Date.now() - 5000)) {
+                                roleUpdateEmbed.addFields({
+                                    name: 'Değiştiren Kullanıcı',
+                                    value: `<@${roleLog.executor.id}> (${roleLog.executor.tag})`
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Audit log erişim hatası:', error);
+                        }
+                        
+                        await logChannel.send({ embeds: [roleUpdateEmbed] });
+                        
+                        // Eğer rol değişikliği loglandıysa, takma ad için log gönderme
+                        // Ama sadece aynı güncelleme kapsamında takma ad da değiştiyse
+                        if (nicknameChanged) {
+                            return; // Rol değişikliği loglandıysa, aynı güncelleme içinde takma ad değişikliği logunu gönderme
+                        }
                     }
-                    
-                    await logChannel.send({ embeds: [roleUpdateEmbed] });
                 }
                 
-                // Nickname değişikliği kontrolü
-                if (oldMember.nickname !== newMember.nickname) {
+                // Nickname değişikliği kontrolü - sadece eğer rol değişikliği loglanmadıysa
+                if (nicknameChanged) {
                     const nicknameUpdateEmbed = new EmbedBuilder()
                         .setColor('#1E90FF')
                         .setTitle('Üye Takma Adı Değiştirildi')

@@ -148,33 +148,107 @@ module.exports = {
             }
         });
         
-        // Rol silme
-        client.on(Events.GuildRoleDelete, async role => {
-            try {
-                // Denetim kaydından kimin sildiğini bul
-                const auditLogs = await role.guild.fetchAuditLogs({
-                    limit: 1,
-                    type: AuditLogEvent.RoleDelete
-                });
+        // Rol silme olayı
+client.on(Events.GuildRoleDelete, async (role) => {
+    try {
+        // 1. Sunucu kontrolü ekleyin
+        if (!role.guild || !role.guild.available) {
+            console.log('Rol silme log hatası: Sunucu bulunamadı veya kullanılamıyor');
+            return;
+        }
+        
+        // 2. Log kanalını kontrol et - eğer yoksa erken çık
+        const logChannelId = await database.logs.getLogChannel(role.guild.id, 'server');
+        if (!logChannelId) return;
+        
+        const logChannel = await role.guild.channels.fetch(logChannelId).catch(() => null);
+        if (!logChannel) return;
+        
+        // 3. Bot'un sunucuya erişimi var mı kontrol edin
+        const botMember = await role.guild.members.fetchMe().catch(() => null);
+        if (!botMember) {
+            console.log(`Rol silme log hatası: Bot artık ${role.guild.id} ID'li sunucuda değil`);
+            return;
+        }
+        
+        // 4. Audit log görüntüleme yetkisi kontrolü
+        if (!botMember.permissions.has('ViewAuditLog')) {
+            console.log(`Rol silme log hatası: Bot'un denetim günlüklerini görüntüleme yetkisi yok (Sunucu: ${role.guild.id})`);
+            
+            // Yetkisiz durumda basit log gönder
+            const simpleEmbed = new EmbedBuilder()
+                .setColor('#f1c40f')
+                .setTitle('🗑️ Rol Silindi')
+                .setDescription(`Bir rol silindi, ancak detaylar alınamadı.`)
+                .addFields(
+                    { name: 'Rol Adı', value: role.name },
+                    { name: 'Rol ID', value: role.id },
+                    { name: 'Rol Rengi', value: role.hexColor }
+                )
+                .setTimestamp();
                 
-                const logEntry = auditLogs.entries.first();
-                const executor = logEntry ? logEntry.executor : { tag: 'Bilinmiyor', id: 'Bilinmiyor' };
+            await logChannel.send({ embeds: [simpleEmbed] }).catch(console.error);
+            return;
+        }
+        
+        // 5. Audit log erişiminde hata yakalama ekleyin
+        const fetchedLogs = await role.guild.fetchAuditLogs({
+            limit: 1,
+            type: 32 // ROLE_DELETE
+        }).catch(err => {
+            console.error(`Denetim günlüklerine erişim hatası (Sunucu: ${role.guild.id}):`, err);
+            
+            // Hata durumunda basit log gönder
+            const simpleEmbed = new EmbedBuilder()
+                .setColor('#f1c40f')
+                .setTitle('🗑️ Rol Silindi')
+                .setDescription(`Bir rol silindi, ancak silinen kişi bilgisi alınamadı.`)
+                .addFields(
+                    { name: 'Rol Adı', value: role.name },
+                    { name: 'Rol ID', value: role.id },
+                    { name: 'Rol Rengi', value: role.hexColor }
+                )
+                .setTimestamp();
                 
-                await logEvents.sendLog(role.guild, 'server', {
-                    color: '#ff0000',
-                    title: '🗑️ Rol Silindi',
-                    description: `**${role.name}** rolü silindi`,
-                    fields: [
-                        { name: 'Rol Adı', value: role.name, inline: true },
-                        { name: 'Rol ID', value: role.id, inline: true },
-                        { name: 'Renk', value: role.hexColor, inline: true },
-                        { name: 'Silen', value: `${executor.tag} (${executor.id})`, inline: true }
-                    ]
-                });
-            } catch (error) {
-                console.error('Rol silme log hatası:', error);
-            }
+            logChannel.send({ embeds: [simpleEmbed] }).catch(console.error);
+            return null;
         });
+        
+        if (!fetchedLogs) return; // Loglar alınamadıysa ve basit log gönderildiyse işlemi durdur
+        
+        // Denetim günlüğünden silinen kişiyi bul
+        const deletionLog = fetchedLogs.entries.first();
+        
+        // Detaylı embed oluştur
+        const embed = new EmbedBuilder()
+            .setColor('#f1c40f')
+            .setTitle('🗑️ Rol Silindi')
+            .addFields(
+                { name: 'Rol Adı', value: role.name, inline: true },
+                { name: 'Rol ID', value: role.id, inline: true },
+                { name: 'Rol Rengi', value: role.hexColor, inline: true }
+            )
+            .setTimestamp();
+        
+        // Eğer denetim günlüğünden bilgi alınabildiyse, silen kişiyi ekle
+        if (deletionLog) {
+            const { executor } = deletionLog;
+            
+            if (executor) {
+                embed.addFields(
+                    { name: 'Silen Kullanıcı', value: `${executor.tag} (${executor.id})`, inline: true }
+                );
+                embed.setFooter({ text: `Silinen kişi: ${executor.tag}`, iconURL: executor.displayAvatarURL() });
+            }
+        }
+
+        // Log kanalına gönder
+        await logChannel.send({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('Rol silme log hatası:', error);
+    }
+});
         
         // Rol güncelleme
         client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
