@@ -29,6 +29,7 @@ module.exports = {
                 .setDescription(activeMessage)
                 .addFields(
                     { name: 'Bilgilendirme', value: 'Sunucumuz tam kapasite ile hizmetinizde. Keyifli vakit geçirmeniz dileğiyle!' },
+                    { name: 'Sunucu IP', value: 'connect 185.72.9.188' },
                     { name: 'İletişim', value: 'Herhangi bir sorun veya sorunuz için <#1354815501619957934> kanalından ticket açabilirsiniz.' },
                 )
                 .setImage(imageUrl)
